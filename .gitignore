@@ -1,0 +1,34 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# Package manager / local tool state
+/.cargo/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor and IDE files
+.idea/
+.vscode/
+*.iml
+*.suo
+*.user
+*.userossc
+*.sln.docstates
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Test results
+allure-results/

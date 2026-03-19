@@ -1,0 +1,19 @@
+[package]
+name = "allure-test-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/allure-test-macros"
+readme = "README.md"
+description = "Procedural macros for Allure Rust test and step instrumentation."
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]

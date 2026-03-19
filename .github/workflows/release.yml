@@ -1,0 +1,59 @@
+name: Release
+run-name: Release ${{ inputs.releaseVersion }} by ${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseVersion:
+        description: "The release version in <MAJOR>.<MINOR>.<PATCH> format"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check release version
+        run: |
+          expr "${{ github.event.inputs.releaseVersion }}" : '\(^[1-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\(-beta\.[1-9][0-9]*\)\{0,1\}\)$'
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.QAMETA_CI }}
+
+      - name: Configure CI Git User
+        run: |
+          git config --global user.name qameta-ci
+          git config --global user.email qameta-ci@qameta.io
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-edit
+        run: cargo install cargo-edit --locked
+
+      - name: Set release version
+        run: |
+          cargo set-version --workspace ${{ github.event.inputs.releaseVersion }}
+          cargo update --workspace
+
+      - name: Commit release version and create tag
+        run: |
+          git add -A
+          git commit -m "release ${{ github.event.inputs.releaseVersion }}"
+          git tag v${{ github.event.inputs.releaseVersion }}
+          git push origin v${{ github.event.inputs.releaseVersion }}
+          git push origin ${GITHUB_REF}
+
+      - name: Publish GitHub Release
+        uses: octokit/request-action@v2.x
+        with:
+          route: POST /repos/${{ github.repository }}/releases
+          tag_name: v${{ github.event.inputs.releaseVersion }}
+          generate_release_notes: true
+          target_commitish: ${{ github.ref }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.QAMETA_CI }}

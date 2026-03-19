@@ -1,0 +1,18 @@
+[package]
+name = "allure-cargotest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/allure-cargotest"
+readme = "README.md"
+description = "Cargo test integration and facade APIs for generating Allure Report results in Rust."
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+allure-rust-commons = { version = "0.1.0", path = "../allure-rust-commons" }
+allure-test-macros = { version = "0.1.0", path = "../allure-test-macros" }

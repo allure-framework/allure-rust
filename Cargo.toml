@@ -1,0 +1,24 @@
+[workspace]
+members = [
+  "crates/allure-rust-commons",
+  "crates/allure-test-macros",
+  "crates/allure-cargotest",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+authors = ["Qameta Software Inc"]
+license = "Apache-2.0"
+repository = "https://github.com/allure-framework/allure-rust"
+homepage = "https://allurereport.org/"
+readme = "README.md"
+description = "Rust libraries for generating Allure Report results."
+keywords = ["allure", "testing", "reporting", "qa"]
+categories = ["development-tools::testing"]
+
+[workspace.metadata.release]
+shared-version = true
+tag-name = "v{{version}}"

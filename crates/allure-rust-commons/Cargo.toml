@@ -1,0 +1,18 @@
+[package]
+name = "allure-rust-commons"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/allure-rust-commons"
+readme = "README.md"
+description = "Core Allure runtime model, lifecycle, and result writer for Rust integrations."
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
