@@ -14,5 +14,5 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-allure-rust-commons = { version = "0.1.0", path = "../allure-rust-commons" }
-allure-test-macros = { version = "0.1.0", path = "../allure-test-macros" }
+allure-rust-commons = { version = "1.0.1", path = "../allure-rust-commons" }
+allure-test-macros = { version = "1.0.1", path = "../allure-test-macros" }
