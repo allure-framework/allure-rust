@@ -109,6 +109,25 @@ fn open_login_page() {
 The `#[allure_test]` attribute initializes a reporter automatically (using
 `ALLURE_RESULTS_DIR` or `target/allure-results`) and wraps the test lifecycle.
 
+Async tests can compose `#[allure_test]` with a runtime-specific test macro such as
+`#[tokio::test]`. Add and configure Tokio in your test crate; `allure-cargotest` does not depend
+on Tokio.
+
+```rust
+use allure_cargotest::allure_test;
+
+#[allure_test]
+#[tokio::test]
+async fn async_test_with_allure() {
+    allure.feature("Async API");
+    tokio::task::yield_now().await;
+    allure.parameter("runtime", "tokio");
+}
+```
+
+Allure context is available in the root async test body and awaited helpers. Implicit propagation
+into independently spawned tasks is not guaranteed.
+
 `#[allure_test]` also derives synthetic suite labels from the Rust module path when a full
 name is available. A single module segment becomes `suite`; with two or more segments, the first
 becomes `parentSuite`, the second becomes `suite`, and any remaining module segments are joined

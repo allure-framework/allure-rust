@@ -129,12 +129,9 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         return compile_error("#[allure_test] can be applied only to functions");
     };
 
-    if tokens[..fn_index]
+    let is_async = tokens[..fn_index]
         .iter()
-        .any(|t| matches!(t, TokenTree::Ident(id) if id.to_string() == "async"))
-    {
-        return compile_error("#[allure_test] does not support async functions");
-    }
+        .any(|t| matches!(t, TokenTree::Ident(id) if id.to_string() == "async"));
 
     let should_panic = parse_should_panic_config(&tokens[..fn_index]);
 
@@ -170,7 +167,47 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         None => String::new(),
     };
 
-    let wrapped_body_src = if should_panic.enabled {
+    let wrapped_body_src = if should_panic.enabled && is_async {
+        format!(
+            "{{
+  let __allure_results_dir = ::std::env::var(\"ALLURE_RESULTS_DIR\")
+    .unwrap_or_else(|_| \"target/allure-results\".to_string());
+  let __allure_reporter = ::allure_cargotest::CargoTestReporter::new(__allure_results_dir)
+    .expect(\"allure reporter should be created\");
+  if !__allure_reporter.is_selected({test_name:?}, Some({test_name:?}), None, None) {{
+    return;
+  }}
+  let allure = __allure_reporter.allure().clone();
+  __allure_reporter.run_test_with_result_async({test_name:?}, async move {{
+    {allure_id_setup}
+    let __allure_result = ::allure_cargotest::__private::catch_unwind_async(async move {{ {original_body} }}).await;
+    match __allure_result {{
+      Ok(()) => (
+        ::allure_cargotest::Status::Failed,
+        Some(::allure_cargotest::StatusDetails {{
+          message: Some(\"expected panic but none occurred\".to_string()),
+          trace: None,
+          actual: None,
+          expected: None,
+        }}),
+        None,
+      ),
+      Err(__allure_payload) => {{
+        let __allure_message = if let Some(__allure_msg) = __allure_payload.downcast_ref::<&str>() {{
+          (*__allure_msg).to_string()
+        }} else if let Some(__allure_msg) = __allure_payload.downcast_ref::<String>() {{
+          __allure_msg.clone()
+        }} else {{
+          \"panic without string payload\".to_string()
+        }};
+        {}
+      }}
+    }}
+  }}).await;
+}}",
+            expected_match_arm(&should_panic.expected)
+        )
+    } else if should_panic.enabled {
         format!(
             "{{
   let __allure_results_dir = ::std::env::var(\"ALLURE_RESULTS_DIR\")
@@ -208,6 +245,18 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
   }});
 }}",
             expected_match_arm(&should_panic.expected)
+        )
+    } else if is_async {
+        format!(
+            "{{
+  let __allure_results_dir = ::std::env::var(\"ALLURE_RESULTS_DIR\")
+    .unwrap_or_else(|_| \"target/allure-results\".to_string());
+  let __allure_reporter = ::allure_cargotest::CargoTestReporter::new(__allure_results_dir)
+    .expect(\"allure reporter should be created\");
+  let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
+  let allure = __allure_reporter.allure().clone();
+  __allure_reporter.run_test_with_metadata_async({test_name:?}, Some(&__allure_full_name), None, None, async move {{ {allure_id_setup} {original_body} }}).await;
+}}"
         )
     } else {
         format!(

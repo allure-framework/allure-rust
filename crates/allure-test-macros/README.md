@@ -35,6 +35,10 @@ fn login_works() {
 
 ## Notes
 
-- `#[allure_test]` currently supports synchronous test functions that return `()`.
+- `#[allure_test]` supports synchronous `#[test]` functions and root async tests that compose with
+  runtime-specific attributes such as `#[tokio::test]`.
+- For Tokio tests, add Tokio to your test crate and place `#[allure_test]` above `#[tokio::test]`.
+- Allure context is available in the root async test body and awaited helpers, but independently
+  spawned tasks do not implicitly inherit it.
 - The macro uses `ALLURE_RESULTS_DIR` when set, otherwise `target/allure-results`.
 - This crate is intended as an implementation crate for proc macros.
