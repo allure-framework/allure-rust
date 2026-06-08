@@ -188,6 +188,56 @@ fn generates_allure_results_for_steps_sample() {
 }
 
 #[test]
+fn generates_allure_results_for_tokio_async_tests() {
+    let (results, results_dir, _project_dir) = run_sample("tokio_async", true);
+
+    let current_thread = results
+        .get("Async custom name")
+        .expect("missing Async custom name result");
+    assert_has_allure_result_fields(current_thread);
+    assert_eq!(json_string(current_thread, "status"), Some("passed"));
+    assert_eq!(
+        json_string(current_thread, "fullName"),
+        Some("allure::writes_tokio_async_metadata")
+    );
+    assert!(contains_label(current_thread, "ALLURE_ID", "ASYNC-1"));
+    assert!(contains_label(
+        current_thread,
+        "component",
+        "tokio-current-thread"
+    ));
+    assert!(current_thread.contains(
+        "\"parameters\":[{\"name\":\"phase\",\"value\":\"after-await\",\"excluded\":null,\"mode\":null}]"
+    ));
+    assert!(current_thread.contains(
+        "\"steps\":[{\"uuid\":null,\"name\":\"async helper step\",\"status\":\"passed\""
+    ));
+    assert!(current_thread.contains("\"attachments\":[{\"name\":\"async.txt\""));
+
+    let attachment_source =
+        json_string(current_thread, "source").expect("async attachment source should exist");
+    let attachment_content = fs::read_to_string(results_dir.join(attachment_source))
+        .expect("async attachment should exist");
+    assert_eq!(attachment_content, "hello from async test");
+
+    let multi_thread = results
+        .get("writes_tokio_multi_thread_metadata_after_await")
+        .expect("missing writes_tokio_multi_thread_metadata_after_await result");
+    assert_has_allure_result_fields(multi_thread);
+    assert_eq!(json_string(multi_thread, "status"), Some("passed"));
+    assert!(contains_label(
+        multi_thread,
+        "component",
+        "tokio-multi-thread"
+    ));
+    assert!(multi_thread.contains(
+        "\"steps\":[{\"uuid\":null,\"name\":\"direct async step\",\"status\":\"passed\""
+    ));
+    assert!(multi_thread
+        .contains("{\"uuid\":null,\"name\":\"async helper step\",\"status\":\"passed\""));
+}
+
+#[test]
 fn generates_allure_results_for_failing_tests() {
     let (results, _, _project_dir) = run_sample("failing", false);
 
@@ -253,6 +303,42 @@ fn generates_allure_results_for_should_panic_tests() {
     );
     assert_eq!(
         json_string(should_panic_without_panic_fails, "message"),
+        Some("expected panic but none occurred")
+    );
+}
+
+#[test]
+fn generates_allure_results_for_tokio_async_should_panic_tests() {
+    let (results, _, _project_dir) = run_sample("tokio_async_should_panic", false);
+
+    let without_expected = results
+        .get("tokio_should_panic_without_expected_passes")
+        .expect("missing tokio_should_panic_without_expected_passes result");
+    assert_has_allure_result_fields(without_expected);
+    assert_eq!(json_string(without_expected, "status"), Some("passed"));
+
+    let with_expected = results
+        .get("tokio_should_panic_with_expected_passes")
+        .expect("missing tokio_should_panic_with_expected_passes result");
+    assert_has_allure_result_fields(with_expected);
+    assert_eq!(json_string(with_expected, "status"), Some("passed"));
+
+    let expected_mismatch = results
+        .get("tokio_should_panic_with_expected_mismatch_fails")
+        .expect("missing tokio_should_panic_with_expected_mismatch_fails result");
+    assert_has_allure_result_fields(expected_mismatch);
+    assert_eq!(json_string(expected_mismatch, "status"), Some("failed"));
+    assert!(expected_mismatch.contains("panic message mismatch: expected substring"));
+    assert!(expected_mismatch.contains("needle"));
+    assert!(expected_mismatch.contains("different async panic message"));
+
+    let without_panic = results
+        .get("tokio_should_panic_without_panic_fails")
+        .expect("missing tokio_should_panic_without_panic_fails result");
+    assert_has_allure_result_fields(without_panic);
+    assert_eq!(json_string(without_panic, "status"), Some("failed"));
+    assert_eq!(
+        json_string(without_panic, "message"),
         Some("expected panic but none occurred")
     );
 }
@@ -555,6 +641,13 @@ fn prepare_sample_project(sample_name: &str) -> TempProjectDir {
     )
     .expect("sample test should be copied");
 
+    let extra_dependencies = if sample_name.starts_with("tokio_async") {
+        r#"tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
+"#
+    } else {
+        ""
+    };
+
     let cargo_toml = format!(
         r#"[package]
 name = "allure-cargotest-sample-{}"
@@ -565,13 +658,15 @@ edition = "2021"
 
 [dependencies]
 allure-cargotest = {{ path = "{}" }}
+{}
 "#,
         sample_name,
         repo_root
             .join("crates")
             .join("allure-cargotest")
             .to_str()
-            .expect("path should be utf-8")
+            .expect("path should be utf-8"),
+        extra_dependencies
     );
     fs::write(project_dir.path().join("Cargo.toml"), cargo_toml)
         .expect("sample Cargo.toml should be generated");

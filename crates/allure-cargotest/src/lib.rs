@@ -8,8 +8,11 @@ pub use allure_test_macros::{allure_test, step};
 use std::{
     any::Any,
     cell::RefCell,
+    future::Future,
     panic::{catch_unwind, AssertUnwindSafe},
     path::Path,
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 mod labels;
@@ -24,7 +27,8 @@ thread_local! {
 }
 
 pub mod __private {
-    use super::{AllureFacade, CURRENT_ALLURE};
+    use super::CURRENT_ALLURE;
+    use super::{catch_unwind, AllureFacade, AssertUnwindSafe, Context, Future, Pin, Poll};
 
     pub struct CurrentAllureGuard {
         previous: Option<AllureFacade>,
@@ -44,6 +48,72 @@ pub mod __private {
             CURRENT_ALLURE.with(|current| {
                 current.replace(self.previous.take());
             });
+        }
+    }
+
+    pub async fn catch_unwind_async<F>(future: F) -> std::thread::Result<F::Output>
+    where
+        F: Future,
+    {
+        CatchUnwindFuture {
+            future: Box::pin(future),
+        }
+        .await
+    }
+
+    pub(crate) async fn run_with_current_allure<F>(
+        allure: AllureFacade,
+        future: F,
+    ) -> std::thread::Result<F::Output>
+    where
+        F: Future,
+    {
+        CurrentAllureFuture {
+            allure,
+            future: Box::pin(future),
+        }
+        .await
+    }
+
+    struct CatchUnwindFuture<F> {
+        future: Pin<Box<F>>,
+    }
+
+    impl<F> Future for CatchUnwindFuture<F>
+    where
+        F: Future,
+    {
+        type Output = std::thread::Result<F::Output>;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let this = self.get_mut();
+            match catch_unwind(AssertUnwindSafe(|| this.future.as_mut().poll(cx))) {
+                Ok(Poll::Ready(output)) => Poll::Ready(Ok(output)),
+                Ok(Poll::Pending) => Poll::Pending,
+                Err(payload) => Poll::Ready(Err(payload)),
+            }
+        }
+    }
+
+    struct CurrentAllureFuture<F> {
+        allure: AllureFacade,
+        future: Pin<Box<F>>,
+    }
+
+    impl<F> Future for CurrentAllureFuture<F>
+    where
+        F: Future,
+    {
+        type Output = std::thread::Result<F::Output>;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let this = self.get_mut();
+            let _current_allure = push_current_allure(&this.allure);
+            match catch_unwind(AssertUnwindSafe(|| this.future.as_mut().poll(cx))) {
+                Ok(Poll::Ready(output)) => Poll::Ready(Ok(output)),
+                Ok(Poll::Pending) => Poll::Pending,
+                Err(payload) => Poll::Ready(Err(payload)),
+            }
         }
     }
 }
@@ -143,6 +213,46 @@ impl CargoTestReporter {
         }
     }
 
+    pub async fn run_test_with_metadata_async<F>(
+        &self,
+        test_name: &str,
+        full_name: Option<&str>,
+        allure_id: Option<&str>,
+        tags: Option<&[&str]>,
+        future: F,
+    ) where
+        F: Future<Output = ()>,
+    {
+        if !self.is_selected(test_name, full_name, allure_id, tags) {
+            return;
+        }
+
+        if let Some(full_name) = full_name {
+            self.allure.start_test_with_full_name(test_name, full_name);
+        } else {
+            self.allure.start_test(test_name);
+        }
+        labels::add_default_and_global_labels(&self.allure);
+        labels::add_synthetic_suite_labels(&self.allure, full_name);
+        let result = __private::run_with_current_allure(self.allure.clone(), future).await;
+        match result {
+            Ok(_) => self.allure.end_test(Status::Passed, None),
+            Err(payload) => {
+                let msg = panic_message(payload.as_ref());
+                self.allure.end_test(
+                    Status::Failed,
+                    Some(StatusDetails {
+                        message: Some(msg),
+                        trace: None,
+                        actual: None,
+                        expected: None,
+                    }),
+                );
+                std::panic::resume_unwind(payload);
+            }
+        }
+    }
+
     pub fn is_selected(
         &self,
         _test_name: &str,
@@ -168,6 +278,46 @@ impl CargoTestReporter {
         if let Some(payload) = panic_payload {
             std::panic::resume_unwind(payload);
         }
+    }
+
+    pub async fn run_test_with_result_async<F>(&self, name: &str, future: F)
+    where
+        F: Future<Output = (Status, Option<StatusDetails>, Option<Box<dyn Any + Send>>)>,
+    {
+        self.allure.start_test(name);
+        labels::add_default_and_global_labels(&self.allure);
+        let result = __private::run_with_current_allure(self.allure.clone(), future).await;
+        match result {
+            Ok((status, details, panic_payload)) => {
+                self.allure.end_test(status, details);
+                if let Some(payload) = panic_payload {
+                    std::panic::resume_unwind(payload);
+                }
+            }
+            Err(payload) => {
+                let msg = panic_message(payload.as_ref());
+                self.allure.end_test(
+                    Status::Failed,
+                    Some(StatusDetails {
+                        message: Some(msg),
+                        trace: None,
+                        actual: None,
+                        expected: None,
+                    }),
+                );
+                std::panic::resume_unwind(payload);
+            }
+        }
+    }
+}
+
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(msg) = payload.downcast_ref::<&str>() {
+        (*msg).to_string()
+    } else if let Some(msg) = payload.downcast_ref::<String>() {
+        msg.clone()
+    } else {
+        "panic without string payload".to_string()
     }
 }
 

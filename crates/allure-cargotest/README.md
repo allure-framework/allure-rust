@@ -36,6 +36,26 @@ fn login_works() {
 }
 ```
 
+## Tokio async tests
+
+For Tokio tests, depend on Tokio in your test crate and place `#[allure_test]` above
+`#[tokio::test]`. `allure-cargotest` does not depend on Tokio.
+
+```rust
+use allure_cargotest::allure_test;
+
+#[allure_test]
+#[tokio::test]
+async fn login_works_async() {
+    allure.feature("Authentication");
+    tokio::task::yield_now().await;
+    allure.parameter("runtime", "tokio");
+}
+```
+
+The root async test body and awaited helpers can use Allure metadata and steps. Independently
+spawned Tokio tasks do not implicitly inherit the current Allure context.
+
 ## Configure the output directory
 
 Override the default results directory with `ALLURE_RESULTS_DIR`:
