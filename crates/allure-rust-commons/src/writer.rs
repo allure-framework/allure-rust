@@ -5,7 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::model::{Categories, Globals, TestResult, TestResultContainer};
+use crate::{
+    http_exchange::{HTTP_EXCHANGE_ATTACHMENT_EXTENSION, HTTP_EXCHANGE_ATTACHMENT_MIME},
+    model::{Categories, Globals, TestResult, TestResultContainer},
+};
 
 #[derive(Debug, Clone)]
 pub struct FileSystemResultsWriter {
@@ -157,6 +160,7 @@ fn extension_from_content_type(content_type: Option<&str>) -> Option<String> {
         "text/csv" => ".csv",
         "text/xml" => ".xml",
         "application/json" => ".json",
+        HTTP_EXCHANGE_ATTACHMENT_MIME => HTTP_EXCHANGE_ATTACHMENT_EXTENSION,
         "application/xml" => ".xml",
         "application/yaml" | "application/x-yaml" | "text/yaml" => ".yaml",
         "image/png" => ".png",

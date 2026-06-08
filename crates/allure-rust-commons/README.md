@@ -36,6 +36,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## HTTP exchange attachments
+
+Use `HttpExchange` when an integration captures request/response evidence for Allure viewers or
+API coverage tools.
+
+```rust
+use allure_rust_commons::{
+    AllureFacade, HttpExchange, HttpExchangeBody, HttpExchangeBodyEncoding, HttpExchangeResponse,
+};
+
+fn attach_order_exchange(allure: &AllureFacade) {
+    let mut exchange = HttpExchange::new("POST", "https://api.example.com/v1/orders");
+    exchange.request.body = Some(HttpExchangeBody {
+        content_type: Some("application/json".to_string()),
+        encoding: Some(HttpExchangeBodyEncoding::Utf8),
+        value: Some(r#"{"name":"demo"}"#.to_string()),
+        size: Some(15),
+        truncated: Some(false),
+        ..Default::default()
+    });
+    exchange.response = Some(HttpExchangeResponse {
+        status: Some(201),
+        status_text: Some("Created".to_string()),
+        ..Default::default()
+    });
+
+    allure.http_exchange(exchange);
+}
+```
+
 ## Common building blocks
 
 - `AllureRuntime`: owns the configured results writer.

@@ -1,9 +1,12 @@
 use super::*;
-use crate::model::{
-    Attachment, Categories, Category, GlobalAttachment, GlobalError, Globals, Status, TestResult,
-    TestResultContainer,
-};
 use crate::test_utils::allure_test;
+use crate::{
+    http_exchange::HTTP_EXCHANGE_ATTACHMENT_MIME,
+    model::{
+        Attachment, Categories, Category, GlobalAttachment, GlobalError, Globals, Status,
+        TestResult, TestResultContainer,
+    },
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn make_writer() -> FileSystemResultsWriter {
@@ -277,6 +280,22 @@ fn attachment_filename_falls_back_to_content_type() {
                 Some("application/json; charset=utf-8"),
             );
             assert_eq!(source, "abc-attachment.json");
+        },
+    );
+}
+
+#[test]
+fn attachment_filename_falls_back_to_http_exchange_content_type() {
+    allure_test(
+        module_path!(),
+        "attachment_filename_falls_back_to_http_exchange_content_type",
+        || {
+            let source = attachment_source_name(
+                "abc",
+                Some("exchange"),
+                Some(HTTP_EXCHANGE_ATTACHMENT_MIME),
+            );
+            assert_eq!(source, "abc-attachment.httpexchange");
         },
     );
 }

@@ -1,5 +1,6 @@
 pub mod error_classifier;
 pub mod facade;
+pub mod http_exchange;
 pub mod lifecycle;
 pub(crate) mod md5;
 pub mod model;
@@ -9,6 +10,7 @@ pub mod writer;
 mod test_utils;
 
 pub use facade::{allure, AllureFacade, StepGuard};
+pub use http_exchange::*;
 pub use lifecycle::{AllureLifecycle, AllureRuntime, StartTestCaseParams};
 pub use md5::md5_hex;
 pub use model::*;

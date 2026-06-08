@@ -1,5 +1,8 @@
 use super::*;
-use crate::test_utils::allure_test;
+use crate::{
+    http_exchange::{HttpExchange, HTTP_EXCHANGE_ATTACHMENT_MIME},
+    test_utils::allure_test,
+};
 use std::{fs, path::PathBuf};
 
 fn reset_active_roots() {
@@ -82,6 +85,80 @@ fn test_case_public_methods_are_persisted() {
             assert_eq!(result["parameters"][0]["name"], "browser");
             assert_eq!(result["steps"][0]["name"], "root step");
             assert_eq!(result["steps"][0]["status"], "passed");
+        },
+    );
+}
+
+#[test]
+fn add_http_exchange_writes_httpexchange_attachment() {
+    allure_test(
+        module_path!(),
+        "add_http_exchange_writes_httpexchange_attachment",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("http-exchange-attachment");
+
+            lifecycle.start_test_case("http-test");
+            lifecycle.add_http_exchange(HttpExchange::new(
+                "GET",
+                "https://api.example.com/v1/orders/42",
+            ));
+            lifecycle.stop_test_case(Status::Passed, None);
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            assert_eq!(results.len(), 1);
+            let attachment = &results[0]["attachments"][0];
+            assert_eq!(attachment["name"], "HTTP Exchange");
+            assert_eq!(attachment["type"], HTTP_EXCHANGE_ATTACHMENT_MIME);
+            let source = attachment["source"]
+                .as_str()
+                .expect("attachment source should be a string");
+            assert!(source.ends_with("-attachment.httpexchange"));
+
+            let payload =
+                fs::read_to_string(out_dir.join(source)).expect("attachment should be readable");
+            let payload = serde_json::from_str::<serde_json::Value>(&payload)
+                .expect("attachment should be json");
+            assert_eq!(payload["schemaVersion"], 1);
+            assert_eq!(payload["request"]["method"], "GET");
+            assert_eq!(
+                payload["request"]["url"],
+                "https://api.example.com/v1/orders/42"
+            );
+        },
+    );
+}
+
+#[test]
+fn facade_http_exchange_named_places_attachment_on_active_step() {
+    allure_test(
+        module_path!(),
+        "facade_http_exchange_named_places_attachment_on_active_step",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("facade-http-exchange-step");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
+
+            lifecycle.start_test_case("http-step-test");
+            lifecycle.start_step("call api");
+            allure.http_exchange_named(
+                "Create order",
+                HttpExchange::new("POST", "https://api.example.com/v1/orders"),
+            );
+            lifecycle.stop_step(Status::Passed, None);
+            lifecycle.stop_test_case(Status::Passed, None);
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            assert_eq!(results.len(), 1);
+            assert!(results[0]["attachments"]
+                .as_array()
+                .expect("root attachments should be an array")
+                .is_empty());
+            let attachment = &results[0]["steps"][0]["attachments"][0];
+            assert_eq!(attachment["name"], "Create order");
+            assert_eq!(attachment["type"], HTTP_EXCHANGE_ATTACHMENT_MIME);
+            let source = attachment["source"]
+                .as_str()
+                .expect("attachment source should be a string");
+            assert!(source.ends_with("-attachment.httpexchange"));
         },
     );
 }

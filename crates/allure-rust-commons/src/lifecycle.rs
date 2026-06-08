@@ -10,6 +10,7 @@ use std::{
 };
 
 use crate::{
+    http_exchange::{HttpExchange, HTTP_EXCHANGE_ATTACHMENT_MIME, HTTP_EXCHANGE_ATTACHMENT_NAME},
     md5::md5_hex,
     model::{
         Attachment, FixtureResult, Label, Link, Parameter, Stage, Status, StatusDetails,
@@ -494,6 +495,16 @@ impl AllureLifecycle {
                     }
                 }
             }
+        }
+    }
+
+    pub fn add_http_exchange(&self, exchange: HttpExchange) {
+        self.add_http_exchange_named(HTTP_EXCHANGE_ATTACHMENT_NAME, exchange);
+    }
+
+    pub fn add_http_exchange_named(&self, name: impl Into<String>, exchange: HttpExchange) {
+        if let Ok(bytes) = serde_json::to_vec(&exchange) {
+            self.add_attachment(name, HTTP_EXCHANGE_ATTACHMENT_MIME, &bytes);
         }
     }
 
