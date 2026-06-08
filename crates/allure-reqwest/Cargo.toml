@@ -27,5 +27,6 @@ reqwest = { version = "0.12", default-features = false }
 reqwest-middleware = { version = "0.4.2", default-features = false, optional = true }
 
 [dev-dependencies]
+allure-cargotest = { version = "1.0.2", path = "../allure-cargotest" }
 serde_json = "1"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread"] }
