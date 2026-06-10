@@ -1,6 +1,6 @@
 use super::*;
-use allure_cargotest::CargoTestReporter;
-use allure_rust_commons::AllureFacade;
+use allure_cargotest::{allure_test, CargoTestReporter};
+use allure_rust_commons::{apply_config_labels, title_path, AllureFacade};
 use serde_json::Value;
 use std::{
     fs,
@@ -33,6 +33,7 @@ where
     let full_name = format!("allure_reqwest::tests::{test_name}");
 
     reporter.run_test_with_metadata(test_name, Some(&full_name), None, None, |allure| {
+        apply_test_metadata(allure);
         body(allure.clone());
     });
 
@@ -59,11 +60,23 @@ where
         None,
         None,
         async move {
+            apply_test_metadata(&allure);
             body(allure).await;
         },
     ));
 
     read_allure_result(&out_dir, test_name)
+}
+
+fn apply_test_metadata(allure: &AllureFacade) {
+    let title_path = title_path(file!(), env!("CARGO_MANIFEST_DIR"));
+    apply_config_labels(
+        allure,
+        env!("CARGO_MANIFEST_DIR"),
+        module_path!(),
+        &title_path,
+    );
+    allure.title_path(title_path);
 }
 
 fn read_allure_result(out_dir: &Path, test_name: &str) -> (Value, Vec<Value>) {
@@ -108,6 +121,23 @@ fn read_allure_result(out_dir: &Path, test_name: &str) -> (Value, Vec<Value>) {
     (result, attachments)
 }
 
+fn assert_reported_to_allure(result: &Value, test_name: &str) {
+    assert_eq!(result["name"], test_name);
+    assert_eq!(result["status"], "passed");
+    assert!(contains_label(result, "module", env!("CARGO_PKG_NAME")));
+    assert!(contains_label(result, "language", "rust"));
+    assert!(contains_label(result, "framework", "cargo-test"));
+    assert_eq!(result["titlePath"], serde_json::json!(["src", "tests.rs"]));
+}
+
+fn contains_label(result: &Value, name: &str, value: &str) -> bool {
+    result["labels"]
+        .as_array()
+        .expect("labels should be an array")
+        .iter()
+        .any(|label| label["name"] == name && label["value"] == value)
+}
+
 #[derive(Debug)]
 struct ReceivedRequest {
     method: String,
@@ -146,7 +176,9 @@ impl TestServer {
         let (sender, received) = mpsc::channel();
 
         let thread = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("test server should accept one request");
+            let (mut stream, _) = listener
+                .accept()
+                .expect("test server should accept one request");
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .expect("test server should set read timeout");
@@ -247,11 +279,10 @@ fn read_request(stream: &mut std::net::TcpStream) -> ReceivedRequest {
 }
 
 fn find_header_end(bytes: &[u8]) -> Option<usize> {
-    bytes
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
+    bytes.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
+#[allure_test]
 #[test]
 fn captures_request_response_metadata_and_request_body() {
     let server = TestServer::spawn(
@@ -281,7 +312,10 @@ fn captures_request_response_metadata_and_request_body() {
     );
     let received = server.received_request();
 
-    assert_eq!(result["status"], "passed");
+    assert_reported_to_allure(
+        &result,
+        "captures_request_response_metadata_and_request_body",
+    );
     assert_eq!(received.method, "POST");
     assert_eq!(received.path, "/v1/orders?dryRun=true&token=secret");
     assert_eq!(received.header("authorization"), Some("Bearer secret"));
@@ -315,6 +349,7 @@ fn captures_request_response_metadata_and_request_body() {
     assert!(attachment["response"].get("body").is_none());
 }
 
+#[allure_test]
 #[test]
 fn captures_response_body_when_enabled_and_preserves_body_for_caller() {
     let server = TestServer::spawn(
@@ -346,7 +381,10 @@ fn captures_response_body_when_enabled_and_preserves_body_for_caller() {
     );
     let received = server.received_request();
 
-    assert_eq!(result["status"], "passed");
+    assert_reported_to_allure(
+        &result,
+        "captures_response_body_when_enabled_and_preserves_body_for_caller",
+    );
     assert_eq!(received.method, "GET");
     assert_eq!(received.path, "/v1/orders/42");
     assert_eq!(received.body, "");
@@ -362,6 +400,7 @@ fn captures_response_body_when_enabled_and_preserves_body_for_caller() {
     assert_eq!(attachment["response"]["body"]["value"], r#"{"ok":true}"#);
 }
 
+#[allure_test]
 #[test]
 fn body_capture_truncates_and_base64_encodes_binary() {
     let (result, attachments) =
@@ -378,11 +417,12 @@ fn body_capture_truncates_and_base64_encodes_binary() {
             assert_eq!(body.truncated, Some(true));
         });
 
-    assert_eq!(result["status"], "passed");
+    assert_reported_to_allure(&result, "body_capture_truncates_and_base64_encodes_binary");
     assert!(attachments.is_empty());
 }
 
 #[cfg(feature = "middleware")]
+#[allure_test]
 #[test]
 fn middleware_can_be_constructed() {
     let (result, attachments) =
@@ -391,6 +431,6 @@ fn middleware_can_be_constructed() {
                 .with_options(CaptureOptions::default().with_attachment_name("HTTP"));
         });
 
-    assert_eq!(result["status"], "passed");
+    assert_reported_to_allure(&result, "middleware_can_be_constructed");
     assert!(attachments.is_empty());
 }

@@ -5,27 +5,22 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-use allure_rust_commons::AllureFacade;
+use crate::AllureFacade;
 
 static HOST_NAME: OnceLock<Option<String>> = OnceLock::new();
 static CONFIGS: OnceLock<Mutex<HashMap<String, AllureConfig>>> = OnceLock::new();
 
-pub(crate) fn add_default_and_global_labels(allure: &AllureFacade) {
+pub fn apply_common_runtime_labels(allure: &AllureFacade) {
     allure.label("language", "rust");
-    allure.label("framework", "cargo-test");
 
     if let Some(host) = detect_host_name() {
         allure.label("host", host);
     }
 
     allure.label("thread", detect_thread_name());
-
-    for (name, value) in global_labels_from_environment() {
-        allure.label(name, value);
-    }
 }
 
-pub(crate) fn add_config_labels(
+pub fn apply_config_labels(
     allure: &AllureFacade,
     manifest_dir: &str,
     module_path: &str,
@@ -100,7 +95,7 @@ fn detect_thread_name() -> String {
         .unwrap_or_else(|| format!("{:?}", std::thread::current().id()))
 }
 
-fn global_labels_from_environment() -> Vec<(String, String)> {
+pub fn global_labels_from_environment() -> Vec<(String, String)> {
     let mut labels = Vec::new();
 
     for (key, value) in env::vars() {
@@ -466,7 +461,40 @@ fn normalize_path(path: &str) -> String {
     path.replace('\\', "/")
 }
 
-pub(crate) fn add_synthetic_suite_labels(allure: &AllureFacade, full_name: Option<&str>) {
+pub fn title_path(file: &str, manifest_dir: &str) -> Vec<String> {
+    relative_file_path(file, manifest_dir)
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+pub fn relative_file_path(file: &str, manifest_dir: &str) -> String {
+    let file = file.replace('\\', "/");
+    let manifest_dir = manifest_dir.replace('\\', "/");
+    if let Some(relative) = file
+        .strip_prefix(&manifest_dir)
+        .map(|path| path.trim_start_matches('/'))
+    {
+        return relative.to_string();
+    }
+
+    let Some(package_name) = manifest_dir.rsplit('/').next() else {
+        return file;
+    };
+    let package_segment = format!("/{package_name}/");
+    if let Some((_, relative)) = file.split_once(&package_segment) {
+        return relative.to_string();
+    }
+    let package_prefix = format!("{package_name}/");
+    if let Some(relative) = file.strip_prefix(&package_prefix) {
+        return relative.to_string();
+    }
+
+    file
+}
+
+pub fn apply_synthetic_suite_labels(allure: &AllureFacade, full_name: Option<&str>) {
     let Some(full_name) = full_name else {
         return;
     };

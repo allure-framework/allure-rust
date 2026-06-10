@@ -72,7 +72,15 @@ fn attach_order_exchange(allure: &AllureFacade) {
 - `AllureLifecycle`: manages in-progress tests and steps.
 - `AllureFacade`: ergonomic helper for labels, links, parameters, steps, and attachments.
 - `FileSystemResultsWriter`: persists JSON result files and attachments.
+- `config`: shared helpers for runtime labels, Cargo metadata labels, and title paths.
 - `model`: raw Allure data structures for custom integrations.
+
+## Configuration Helpers
+
+`AllureLifecycle::start_test_case` automatically adds global labels from `ALLURE_LABEL_*` and
+`allure.label.*` environment variables. Integrations can call `apply_config_labels` to add labels
+from `[package.metadata.allure]` in `Cargo.toml`, and `apply_common_runtime_labels` to add shared
+runtime labels such as `language`, `host`, and `thread`.
 
 ## Output location
 

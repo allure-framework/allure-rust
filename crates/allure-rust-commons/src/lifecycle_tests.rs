@@ -6,12 +6,16 @@ use crate::{
 use std::{fs, path::PathBuf};
 
 fn reset_active_roots() {
-    ACTIVE_TEST_ROOT.with(|cell| *cell.borrow_mut() = None);
+    ACTIVE_TEST_ROOT.with(|cell| cell.borrow_mut().clear());
     ACTIVE_SCOPE_ROOT.with(|cell| *cell.borrow_mut() = None);
 }
 
 fn make_lifecycle(test_name: &str) -> (AllureLifecycle, PathBuf) {
     reset_active_roots();
+    make_lifecycle_without_reset(test_name)
+}
+
+fn make_lifecycle_without_reset(test_name: &str) -> (AllureLifecycle, PathBuf) {
     let out_dir = std::env::temp_dir().join(format!(
         "allure-rust-lifecycle-tests-{test_name}-{}",
         SystemTime::now()
@@ -43,6 +47,14 @@ fn read_jsons_with_suffix(out_dir: &PathBuf, suffix: &str) -> Vec<serde_json::Va
         .collect::<Vec<_>>();
     values.sort_by_key(|v| v["uuid"].as_str().unwrap_or_default().to_string());
     values
+}
+
+fn contains_label(result: &serde_json::Value, name: &str, value: &str) -> bool {
+    result["labels"]
+        .as_array()
+        .expect("labels should be an array")
+        .iter()
+        .any(|label| label["name"] == name && label["value"] == value)
 }
 
 #[test]
@@ -80,7 +92,7 @@ fn test_case_public_methods_are_persisted() {
             assert_eq!(result["name"], "api-test");
             assert_eq!(result["description"], "description");
             assert_eq!(result["testCaseId"], "explicit-case-id");
-            assert_eq!(result["labels"][0]["name"], "suite");
+            assert!(contains_label(result, "suite", "commons"));
             assert_eq!(result["links"][0]["url"], "https://example.invalid/case");
             assert_eq!(result["parameters"][0]["name"], "browser");
             assert_eq!(result["steps"][0]["name"], "root step");
@@ -124,6 +136,48 @@ fn add_http_exchange_writes_httpexchange_attachment() {
                 payload["request"]["url"],
                 "https://api.example.com/v1/orders/42"
             );
+        },
+    );
+}
+
+#[test]
+fn nested_test_contexts_restore_outer_active_test() {
+    allure_test(
+        module_path!(),
+        "nested_test_contexts_restore_outer_active_test",
+        || {
+            let (outer, outer_dir) = make_lifecycle("nested-outer");
+
+            outer.start_test_case("outer");
+            let outer_uuid = outer
+                .current_test_uuid()
+                .expect("outer test uuid should be active");
+
+            let (inner, inner_dir) = make_lifecycle_without_reset("nested-inner");
+            inner.start_test_case("inner");
+            assert_ne!(
+                inner.current_test_uuid().as_deref(),
+                Some(outer_uuid.as_str())
+            );
+            inner.stop_test_case(Status::Passed, None);
+
+            assert_eq!(
+                outer.current_test_uuid().as_deref(),
+                Some(outer_uuid.as_str())
+            );
+            outer.add_parameter("after-inner", "true");
+            outer.stop_test_case(Status::Passed, None);
+
+            let inner_results = read_jsons_with_suffix(&inner_dir, "-result.json");
+            assert_eq!(inner_results.len(), 1);
+            assert_eq!(inner_results[0]["name"], "inner");
+            assert_eq!(inner_results[0]["status"], "passed");
+
+            let outer_results = read_jsons_with_suffix(&outer_dir, "-result.json");
+            assert_eq!(outer_results.len(), 1);
+            assert_eq!(outer_results[0]["name"], "outer");
+            assert_eq!(outer_results[0]["status"], "passed");
+            assert_eq!(outer_results[0]["parameters"][0]["name"], "after-inner");
         },
     );
 }
@@ -229,7 +283,7 @@ fn start_test_case_accepts_optional_test_result_fields() {
             assert_eq!(result["description"], "markdown");
             assert_eq!(result["descriptionHtml"], "<p>html</p>");
             assert_eq!(result["status"], "passed");
-            assert_eq!(result["labels"][0]["value"], "commons");
+            assert!(contains_label(result, "suite", "commons"));
             assert_eq!(result["links"][0]["name"], "docs");
             assert_eq!(result["parameters"][0]["name"], "browser");
             assert_eq!(result["steps"][0]["name"], "seed step");
