@@ -25,9 +25,8 @@ jobs:
           - windows-latest
     env:
       ALLURE_MATRIX_ENV: ${{ matrix.os }}-rust-stable
-      ALLURE_RESULTS_DIR: allure-results
-      ALLURE_SMOKE_RESULTS_DIR: target/allure-cargotest-smoke-results/${{ matrix.os }}-rust-stable
       ALLURE_TEST_DUMP_NAME: allure-results-${{ matrix.os }}-rust-stable
+      ALLURE_SMOKE_DUMP_NAME: allure-results-smoke-${{ matrix.os }}-rust-stable
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -52,8 +51,17 @@ jobs:
       - name: Prepare Allure results
         if: always()
         run: |
-          rm -rf "${ALLURE_RESULTS_DIR}"
-          mkdir -p "${ALLURE_RESULTS_DIR}"
+          workspace="${GITHUB_WORKSPACE//\\//}"
+          results_dir="${workspace}/allure-results"
+          smoke_results_dir="${workspace}/target/allure-cargotest-smoke-results/${ALLURE_MATRIX_ENV}"
+
+          {
+            echo "ALLURE_RESULTS_DIR=${results_dir}"
+            echo "ALLURE_SMOKE_RESULTS_DIR=${smoke_results_dir}"
+          } >> "${GITHUB_ENV}"
+
+          rm -rf "${results_dir}" "${smoke_results_dir}"
+          mkdir -p "${results_dir}" "${smoke_results_dir}"
 
       - name: Run regular tests with Allure
         if: always()
@@ -61,6 +69,7 @@ jobs:
           npx -y allure@3 run \
             --config ./allurerc.mjs \
             --environment="${{ env.ALLURE_MATRIX_ENV }}" \
+            --dump="${ALLURE_TEST_DUMP_NAME}" \
             -- cargo test --workspace --all-targets
 
       - name: Run cargotest smoke check
@@ -68,19 +77,12 @@ jobs:
         run: |
           npx -y allure@3 check \
             --config ./allurerc.mjs \
-            --output="${ALLURE_RESULTS_DIR}" \
+            --dump="${ALLURE_SMOKE_DUMP_NAME}" \
             --name="allure-cargotest smoke (${ALLURE_MATRIX_ENV})" \
             --tag="environment:${ALLURE_MATRIX_ENV}" \
             --tag="os:${{ matrix.os }}" \
             --tag="rust:stable" \
             -- bash ./scripts/check-cargotest-smoke.sh
-
-      - name: Pack Allure test dump
-        if: always()
-        run: |
-          npx -y allure@3 results pack \
-            "${ALLURE_RESULTS_DIR}" \
-            --name="${ALLURE_TEST_DUMP_NAME}.zip"
 
       - name: Upload Allure test dump
         if: always()
@@ -89,7 +91,9 @@ jobs:
           name: ${{ env.ALLURE_TEST_DUMP_NAME }}
           if-no-files-found: error
           retention-days: 7
-          path: ./${{ env.ALLURE_TEST_DUMP_NAME }}.zip
+          path: |
+            ./${{ env.ALLURE_TEST_DUMP_NAME }}.zip
+            ./${{ env.ALLURE_SMOKE_DUMP_NAME }}.zip
 
   report:
     needs: [rust]
