@@ -9,12 +9,33 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    name: Rust stable (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    env:
+      ALLURE_MATRIX_ENV: ${{ matrix.os }}-rust-stable
+      ALLURE_RESULTS_DIR: allure-results
+      ALLURE_SAMPLE_RESULTS_DIR: target/allure-sample-smoke-results/${{ matrix.os }}-rust-stable
+      ALLURE_TEST_DUMP_NAME: allure-results-${{ matrix.os }}-rust-stable
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -28,5 +49,95 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Test
-        run: cargo test --workspace --all-targets
+      - name: Prepare Allure results
+        if: always()
+        run: |
+          rm -rf "${ALLURE_RESULTS_DIR}"
+          mkdir -p "${ALLURE_RESULTS_DIR}"
+
+      - name: Run regular tests with Allure
+        if: always()
+        run: |
+          npx -y allure@3 run \
+            --config ./allurerc.mjs \
+            --environment="${{ env.ALLURE_MATRIX_ENV }}" \
+            -- cargo test --workspace --exclude allure-cargotest-ci-samples --all-targets
+
+      - name: Run sample smoke check
+        if: always()
+        run: |
+          npx -y allure@3 check \
+            --config ./allurerc.mjs \
+            --output="${ALLURE_RESULTS_DIR}" \
+            --name="allure-cargotest sample smoke (${ALLURE_MATRIX_ENV})" \
+            --tag="environment:${ALLURE_MATRIX_ENV}" \
+            --tag="os:${{ matrix.os }}" \
+            --tag="rust:stable" \
+            -- bash ./scripts/check-cargotest-samples.sh
+
+      - name: Pack Allure test dump
+        if: always()
+        run: |
+          npx -y allure@3 results pack \
+            "${ALLURE_RESULTS_DIR}" \
+            --name="${ALLURE_TEST_DUMP_NAME}.zip"
+
+      - name: Upload Allure test dump
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ALLURE_TEST_DUMP_NAME }}
+          if-no-files-found: error
+          retention-days: 7
+          path: ./${{ env.ALLURE_TEST_DUMP_NAME }}.zip
+
+  report:
+    needs: [rust]
+    name: Build report
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    env:
+      ALLURE_SERVICE_TOKEN: ${{ secrets.ALLURE_SERVICE_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+
+      - name: Download Allure dumps
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: allure-results-*
+          path: ./
+          merge-multiple: true
+
+      - name: Generate Allure report
+        run: |
+          npx -y allure@3 generate \
+            --config ./allurerc.mjs \
+            --dump="allure-results-*.zip" \
+            --output=./build/allure-report
+
+      - name: Upload Allure report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-report
+          if-no-files-found: error
+          retention-days: 7
+          path: ./build/allure-report
+
+      - name: Post Allure summary
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+        uses: allure-framework/allure-action@v0.7.1
+        with:
+          report-directory: ./build/allure-report
+          github-token: ${{ secrets.GITHUB_TOKEN }}

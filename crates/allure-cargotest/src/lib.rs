@@ -16,6 +16,8 @@ use std::{
 };
 
 mod labels;
+#[cfg(test)]
+mod test_utils;
 mod testplan;
 
 pub use testplan::{TestPlan, TestPlanEntry};
@@ -28,7 +30,7 @@ thread_local! {
 
 pub mod __private {
     use super::CURRENT_ALLURE;
-    use super::{catch_unwind, AllureFacade, AssertUnwindSafe, Context, Future, Pin, Poll};
+    use super::{catch_unwind, labels, AllureFacade, AssertUnwindSafe, Context, Future, Pin, Poll};
 
     pub struct CurrentAllureGuard {
         previous: Option<AllureFacade>,
@@ -43,12 +45,54 @@ pub mod __private {
         CURRENT_ALLURE.with(|current| current.borrow().clone())
     }
 
+    pub fn title_path(file: &str, manifest_dir: &str) -> Vec<String> {
+        relative_file_path(file, manifest_dir)
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    pub fn apply_config_labels(
+        allure: &AllureFacade,
+        manifest_dir: &str,
+        module_path: &str,
+        title_path: &[String],
+    ) {
+        labels::add_config_labels(allure, manifest_dir, module_path, title_path);
+    }
+
     impl Drop for CurrentAllureGuard {
         fn drop(&mut self) {
             CURRENT_ALLURE.with(|current| {
                 current.replace(self.previous.take());
             });
         }
+    }
+
+    fn relative_file_path(file: &str, manifest_dir: &str) -> String {
+        let file = file.replace('\\', "/");
+        let manifest_dir = manifest_dir.replace('\\', "/");
+        if let Some(relative) = file
+            .strip_prefix(&manifest_dir)
+            .map(|path| path.trim_start_matches('/'))
+        {
+            return relative.to_string();
+        }
+
+        let Some(package_name) = manifest_dir.rsplit('/').next() else {
+            return file;
+        };
+        let package_segment = format!("/{package_name}/");
+        if let Some((_, relative)) = file.split_once(&package_segment) {
+            return relative.to_string();
+        }
+        let package_prefix = format!("{package_name}/");
+        if let Some(relative) = file.strip_prefix(&package_prefix) {
+            return relative.to_string();
+        }
+
+        file
     }
 
     pub async fn catch_unwind_async<F>(future: F) -> std::thread::Result<F::Output>

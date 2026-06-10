@@ -5,6 +5,9 @@ pub(crate) mod md5;
 pub mod model;
 pub mod writer;
 
+#[cfg(test)]
+mod test_utils;
+
 pub use facade::{allure, AllureFacade, StepGuard};
 pub use lifecycle::{AllureLifecycle, AllureRuntime, StartTestCaseParams};
 pub use md5::md5_hex;

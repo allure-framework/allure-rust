@@ -178,7 +178,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     return;
   }}
   let allure = __allure_reporter.allure().clone();
+  let __allure_title_path = ::allure_cargotest::__private::title_path(file!(), env!(\"CARGO_MANIFEST_DIR\"));
   __allure_reporter.run_test_with_result_async({test_name:?}, async move {{
+    ::allure_cargotest::__private::apply_config_labels(&allure, env!(\"CARGO_MANIFEST_DIR\"), module_path!(), &__allure_title_path);
+    allure.title_path(__allure_title_path);
     {allure_id_setup}
     let __allure_result = ::allure_cargotest::__private::catch_unwind_async(async move {{ {original_body} }}).await;
     match __allure_result {{
@@ -217,7 +220,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
   if !__allure_reporter.is_selected({test_name:?}, Some({test_name:?}), None, None) {{
     return;
   }}
+  let __allure_title_path = ::allure_cargotest::__private::title_path(file!(), env!(\"CARGO_MANIFEST_DIR\"));
   __allure_reporter.run_test_with_result({test_name:?}, |allure| {{
+    ::allure_cargotest::__private::apply_config_labels(allure, env!(\"CARGO_MANIFEST_DIR\"), module_path!(), &__allure_title_path);
+    allure.title_path(__allure_title_path);
     {allure_id_setup}
     let __allure_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {{ {original_body} }}));
     match __allure_result {{
@@ -254,8 +260,9 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
   let __allure_reporter = ::allure_cargotest::CargoTestReporter::new(__allure_results_dir)
     .expect(\"allure reporter should be created\");
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
+  let __allure_title_path = ::allure_cargotest::__private::title_path(file!(), env!(\"CARGO_MANIFEST_DIR\"));
   let allure = __allure_reporter.allure().clone();
-  __allure_reporter.run_test_with_metadata_async({test_name:?}, Some(&__allure_full_name), None, None, async move {{ {allure_id_setup} {original_body} }}).await;
+  __allure_reporter.run_test_with_metadata_async({test_name:?}, Some(&__allure_full_name), None, None, async move {{ ::allure_cargotest::__private::apply_config_labels(&allure, env!(\"CARGO_MANIFEST_DIR\"), module_path!(), &__allure_title_path); allure.title_path(__allure_title_path); {allure_id_setup} {original_body} }}).await;
 }}"
         )
     } else {
@@ -266,7 +273,8 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
   let __allure_reporter = ::allure_cargotest::CargoTestReporter::new(__allure_results_dir)
     .expect(\"allure reporter should be created\");
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
-  __allure_reporter.run_test_with_metadata({test_name:?}, Some(&__allure_full_name), None, None, |allure| {{ {allure_id_setup} {original_body} }});
+  let __allure_title_path = ::allure_cargotest::__private::title_path(file!(), env!(\"CARGO_MANIFEST_DIR\"));
+  __allure_reporter.run_test_with_metadata({test_name:?}, Some(&__allure_full_name), None, None, |allure| {{ ::allure_cargotest::__private::apply_config_labels(allure, env!(\"CARGO_MANIFEST_DIR\"), module_path!(), &__allure_title_path); allure.title_path(__allure_title_path); {allure_id_setup} {original_body} }});
 }}"
         )
     };

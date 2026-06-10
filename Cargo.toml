@@ -3,6 +3,7 @@ members = [
   "crates/allure-rust-commons",
   "crates/allure-test-macros",
   "crates/allure-cargotest",
+  "crates/allure-cargotest/tests/samples",
 ]
 resolver = "2"
 

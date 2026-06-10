@@ -11,6 +11,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "allure-cargotest-ci-samples"
+version = "0.0.0"
+dependencies = [
+ "allure-cargotest",
+]
+
+[[package]]
 name = "allure-rust-commons"
 version = "1.0.2"
 dependencies = [

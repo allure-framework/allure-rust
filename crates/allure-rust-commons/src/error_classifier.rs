@@ -42,24 +42,37 @@ pub fn classify_panic(payload: &Box<dyn Any + Send>) -> (Status, StatusDetails) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::allure_test;
 
     #[test]
     fn detects_assertion_messages_as_failed() {
-        assert!(matches!(
-            get_status_from_error("assert_eq! left != right"),
-            Status::Failed
-        ));
-        assert!(matches!(
-            get_status_from_error("assertion failed: expected true"),
-            Status::Failed
-        ));
+        allure_test(
+            module_path!(),
+            "detects_assertion_messages_as_failed",
+            || {
+                assert!(matches!(
+                    get_status_from_error("assert_eq! left != right"),
+                    Status::Failed
+                ));
+                assert!(matches!(
+                    get_status_from_error("assertion failed: expected true"),
+                    Status::Failed
+                ));
+            },
+        );
     }
 
     #[test]
     fn classifies_non_assertion_messages_as_broken() {
-        assert!(matches!(
-            get_status_from_error("panic without string payload"),
-            Status::Broken
-        ));
+        allure_test(
+            module_path!(),
+            "classifies_non_assertion_messages_as_broken",
+            || {
+                assert!(matches!(
+                    get_status_from_error("panic without string payload"),
+                    Status::Broken
+                ));
+            },
+        );
     }
 }
