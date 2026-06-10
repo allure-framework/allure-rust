@@ -64,6 +64,74 @@ Override the default results directory with `ALLURE_RESULTS_DIR`:
 ALLURE_RESULTS_DIR=./allure-results cargo test
 ```
 
+## Configure labels in Cargo.toml
+
+Use Cargo package metadata to add labels for local and CI runs without environment variables:
+
+### Add labels for all tests in a package
+
+Add labels under `[package.metadata.allure.labels]` in the package `Cargo.toml`.
+A package is the Cargo package defined by that `Cargo.toml`.
+
+```toml
+[package.metadata.allure.labels]
+a = "a-value"
+b = ["b-value1", "b-value2"]
+```
+
+This adds `a=a-value`, `b=b-value1`, and `b=b-value2` to every `#[allure_test]` in the package.
+String array values add the same label multiple times.
+
+### Add labels for only some Rust modules
+
+Add one `[[package.metadata.allure.modules]]` entry per Rust module path.
+The `module` value matches the current Rust `module_path!()` exactly, or any module below it.
+
+```toml
+[[package.metadata.allure.modules]]
+module = "org::example"
+labels = { a = "a-value", b = ["b-value1", "b-value2"] }
+```
+
+This applies to tests whose module path is `org::example`, `org::example::api`,
+`org::example::api::v1`, and so on.
+
+For integration tests in `tests/api.rs`, the test file is its own crate, so module paths usually
+start with the file stem:
+
+```toml
+[[package.metadata.allure.modules]]
+module = "api::org::example"
+labels = { a = "a-value" }
+```
+
+### Add labels for only test files
+
+Add one `[[package.metadata.allure.modules]]` entry per file and use `path`. The path is relative
+to the package root and uses the same element-wise file path that appears in `titlePath`.
+
+```toml
+[[package.metadata.allure.modules]]
+path = "tests/payments.rs"
+labels = { a = "a-value", b = ["b-value1", "b-value2"] }
+```
+
+This applies to every `#[allure_test]` in `tests/payments.rs`.
+
+You can also match a source file or a directory:
+
+```toml
+[[package.metadata.allure.modules]]
+path = "src/payments.rs"
+labels = { component = "payments" }
+
+[[package.metadata.allure.modules]]
+path = "tests/api/"
+labels = { layer = "api" }
+```
+
+The directory form matches every test file whose relative path starts with that directory.
+
 ## Generate an Allure report
 
 After the test run, generate and open a report with the Allure CLI:

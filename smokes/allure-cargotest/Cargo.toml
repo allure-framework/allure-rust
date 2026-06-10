@@ -1,0 +1,56 @@
+[package]
+name = "allure-cargotest-smoke"
+version = "0.0.0"
+edition = "2021"
+publish = false
+autotests = false
+
+[dependencies]
+allure-cargotest = { path = "../../crates/allure-cargotest" }
+
+[package.metadata.allure.labels]
+module = "allure-cargotest-smoke"
+
+[[package.metadata.allure.modules]]
+path = "tests/default_and_global_labels.rs"
+labels = { component = "sample-fixture", a = "a-value", b = ["b-value1", "b-value2"] }
+
+[[test]]
+name = "attachments"
+path = "tests/attachments.rs"
+
+[[test]]
+name = "concurrent_metadata"
+path = "tests/concurrent_metadata.rs"
+
+[[test]]
+name = "default_and_global_labels"
+path = "tests/default_and_global_labels.rs"
+
+[[test]]
+name = "descriptions"
+path = "tests/descriptions.rs"
+
+[[test]]
+name = "identifiers"
+path = "tests/identifiers.rs"
+
+[[test]]
+name = "labels"
+path = "tests/labels.rs"
+
+[[test]]
+name = "links"
+path = "tests/links.rs"
+
+[[test]]
+name = "parameters"
+path = "tests/parameters.rs"
+
+[[test]]
+name = "selective"
+path = "tests/selective.rs"
+
+[[test]]
+name = "steps"
+path = "tests/steps.rs"

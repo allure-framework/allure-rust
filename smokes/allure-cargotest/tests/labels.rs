@@ -16,11 +16,7 @@ fn writes_all_labels() {
     allure.layer("e2e");
     allure.tags(["smoke", "regression"]);
     allure.links([
-        (
-            "https://example.test/wiki",
-            Some("wiki"),
-            Some("custom"),
-        ),
+        ("https://example.test/wiki", Some("wiki"), Some("custom")),
         (
             "https://example.test/issue/456",
             Some("issue-456"),

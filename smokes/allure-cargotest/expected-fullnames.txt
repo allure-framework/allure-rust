@@ -1,0 +1,15 @@
+attachments::writes_attachment
+concurrent_metadata::metadata_for_first_test_stays_isolated
+concurrent_metadata::metadata_for_second_test_stays_isolated
+default_and_global_labels::writes_default_and_global_labels
+descriptions::writes_descriptions
+identifiers::allows_runtime_override_for_test_case_id
+identifiers::computes_test_case_id_from_full_name
+labels::derives_synthetic_suite_labels_by_default
+labels::writes_all_labels
+links::writes_links
+parameters::writes_parameters
+selective::selected_by_id
+selective::selected_by_name
+selective::selected_extra
+steps::writes_steps

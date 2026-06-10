@@ -1,6 +1,9 @@
 # Rust build artifacts
-/target/
+target/
 **/*.rs.bk
+
+# Generated reports
+/build/
 
 # Package manager / local tool state
 /.cargo/

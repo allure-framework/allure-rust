@@ -16,4 +16,7 @@ categories.workspace = true
 [lib]
 proc-macro = true
 
+[package.metadata.allure.labels]
+module = "allure-test-macros"
+
 [dependencies]

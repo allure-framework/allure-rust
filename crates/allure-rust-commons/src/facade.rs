@@ -108,6 +108,17 @@ impl AllureFacade {
         }
     }
 
+    pub fn title_path<I, V>(&self, title_path: I)
+    where
+        I: IntoIterator<Item = V>,
+        V: Into<String>,
+    {
+        if let Some(l) = &self.lifecycle {
+            let title_path = title_path.into_iter().map(Into::into).collect();
+            l.update_test_case(|test| test.title_path = Some(title_path));
+        }
+    }
+
     pub fn test_case_id(&self, value: impl Into<String>) {
         if let Some(l) = &self.lifecycle {
             l.set_test_case_id(value);

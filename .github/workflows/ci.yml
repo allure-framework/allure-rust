@@ -9,12 +9,32 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    name: Rust stable (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    env:
+      ALLURE_MATRIX_ENV: ${{ matrix.os }}-rust-stable
+      ALLURE_TEST_DUMP_NAME: allure-results-${{ matrix.os }}-rust-stable
+      ALLURE_SMOKE_DUMP_NAME: allure-results-smoke-${{ matrix.os }}-rust-stable
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -28,5 +48,100 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Test
-        run: cargo test --workspace --all-targets
+      - name: Prepare Allure results
+        if: always()
+        run: |
+          workspace="${GITHUB_WORKSPACE//\\//}"
+          results_dir="${workspace}/allure-results"
+          smoke_results_dir="${workspace}/target/allure-cargotest-smoke-results/${ALLURE_MATRIX_ENV}"
+
+          {
+            echo "ALLURE_RESULTS_DIR=${results_dir}"
+            echo "ALLURE_SMOKE_RESULTS_DIR=${smoke_results_dir}"
+          } >> "${GITHUB_ENV}"
+
+          rm -rf "${results_dir}" "${smoke_results_dir}"
+          mkdir -p "${results_dir}" "${smoke_results_dir}"
+
+      - name: Run regular tests with Allure
+        if: always()
+        run: |
+          npx -y allure@3 run \
+            --config ./allurerc.mjs \
+            --environment="${{ env.ALLURE_MATRIX_ENV }}" \
+            --dump="${ALLURE_TEST_DUMP_NAME}" \
+            -- cargo test --workspace --all-targets
+
+      - name: Run cargotest smoke check
+        if: always()
+        run: |
+          npx -y allure@3 check \
+            --config ./allurerc.mjs \
+            --dump="${ALLURE_SMOKE_DUMP_NAME}" \
+            --name="allure-cargotest smoke (${ALLURE_MATRIX_ENV})" \
+            --tag="environment:${ALLURE_MATRIX_ENV}" \
+            --tag="os:${{ matrix.os }}" \
+            --tag="rust:stable" \
+            -- bash ./scripts/check-cargotest-smoke.sh
+
+      - name: Upload Allure test dump
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ALLURE_TEST_DUMP_NAME }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            ./${{ env.ALLURE_TEST_DUMP_NAME }}.zip
+            ./${{ env.ALLURE_SMOKE_DUMP_NAME }}.zip
+
+  report:
+    needs: [rust]
+    name: Build report
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    env:
+      ALLURE_SERVICE_TOKEN: ${{ secrets.ALLURE_SERVICE_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+
+      - name: Download Allure dumps
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: allure-results-*
+          path: ./
+          merge-multiple: true
+
+      - name: Generate Allure report
+        run: |
+          npx -y allure@3 generate \
+            --config ./allurerc.mjs \
+            --dump="allure-results-*.zip" \
+            --output=./build/allure-report
+
+      - name: Upload Allure report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-report
+          if-no-files-found: error
+          retention-days: 7
+          path: ./build/allure-report
+
+      - name: Post Allure summary
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+        uses: allure-framework/allure-action@v0.7.1
+        with:
+          report-directory: ./build/allure-report
+          github-token: ${{ secrets.GITHUB_TOKEN }}

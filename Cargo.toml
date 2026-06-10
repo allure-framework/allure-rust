@@ -4,6 +4,9 @@ members = [
   "crates/allure-test-macros",
   "crates/allure-cargotest",
 ]
+exclude = [
+  "smokes/allure-cargotest",
+]
 resolver = "2"
 
 [workspace.package]
