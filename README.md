@@ -22,6 +22,7 @@ Allure-compatible results and a ready-to-use integration for `cargo test`.
 This workspace currently includes:
 
 - `allure-rust-commons`: core runtime model, lifecycle, writer, and facade APIs.
+- `allure-reqwest`: `reqwest` integration for Allure HTTP Exchange attachments.
 - `allure-cargotest`: test integration helper and reporter for `cargo test`.
 - `allure-test-macros`: procedural macro crate that provides `#[allure_test]` and `#[step]`.
 
@@ -80,6 +81,7 @@ Implemented runtime facade APIs include:
 - **Links**: `link`, `links`, `issue`, `tms`
 - **Parameters**: `parameter`
 - **Attachments**: `attachment`
+- **HTTP exchanges**: `HttpExchange` in commons, plus `allure-reqwest` for `reqwest` clients
 - **Steps**: `step`, `log_step`, `#[step]` with automatic stop via `StepGuard`
 
 ## Quick example

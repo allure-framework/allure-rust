@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/allure-rust-commons",
+  "crates/allure-reqwest",
   "crates/allure-test-macros",
   "crates/allure-cargotest",
 ]

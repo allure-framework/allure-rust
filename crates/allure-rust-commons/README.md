@@ -36,13 +36,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## HTTP exchange attachments
+
+Use `HttpExchange` when an integration captures request/response evidence for Allure viewers or
+API coverage tools.
+
+```rust
+use allure_rust_commons::{
+    AllureFacade, HttpExchange, HttpExchangeBody, HttpExchangeBodyEncoding, HttpExchangeResponse,
+};
+
+fn attach_order_exchange(allure: &AllureFacade) {
+    let mut exchange = HttpExchange::new("POST", "https://api.example.com/v1/orders");
+    exchange.request.body = Some(HttpExchangeBody {
+        content_type: Some("application/json".to_string()),
+        encoding: Some(HttpExchangeBodyEncoding::Utf8),
+        value: Some(r#"{"name":"demo"}"#.to_string()),
+        size: Some(15),
+        truncated: Some(false),
+        ..Default::default()
+    });
+    exchange.response = Some(HttpExchangeResponse {
+        status: Some(201),
+        status_text: Some("Created".to_string()),
+        ..Default::default()
+    });
+
+    allure.http_exchange(exchange);
+}
+```
+
 ## Common building blocks
 
 - `AllureRuntime`: owns the configured results writer.
 - `AllureLifecycle`: manages in-progress tests and steps.
 - `AllureFacade`: ergonomic helper for labels, links, parameters, steps, and attachments.
 - `FileSystemResultsWriter`: persists JSON result files and attachments.
+- `config`: shared helpers for runtime labels, Cargo metadata labels, and title paths.
 - `model`: raw Allure data structures for custom integrations.
+
+## Configuration Helpers
+
+`AllureLifecycle::start_test_case` automatically adds global labels from `ALLURE_LABEL_*` and
+`allure.label.*` environment variables. Integrations can call `apply_config_labels` to add labels
+from `[package.metadata.allure]` in `Cargo.toml`, and `apply_common_runtime_labels` to add shared
+runtime labels such as `language`, `host`, and `thread`.
 
 ## Output location
 

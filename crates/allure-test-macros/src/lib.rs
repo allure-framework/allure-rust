@@ -170,9 +170,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     let wrapped_body_src = if should_panic.enabled && is_async {
         format!(
             "{{
-  let __allure_results_dir = ::std::env::var(\"ALLURE_RESULTS_DIR\")
-    .unwrap_or_else(|_| \"target/allure-results\".to_string());
-  let __allure_reporter = ::allure_cargotest::CargoTestReporter::new(__allure_results_dir)
+  let __allure_reporter = ::allure_cargotest::__private::new_reporter()
     .expect(\"allure reporter should be created\");
   if !__allure_reporter.is_selected({test_name:?}, Some({test_name:?}), None, None) {{
     return;
@@ -213,9 +211,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     } else if should_panic.enabled {
         format!(
             "{{
-  let __allure_results_dir = ::std::env::var(\"ALLURE_RESULTS_DIR\")
-    .unwrap_or_else(|_| \"target/allure-results\".to_string());
-  let __allure_reporter = ::allure_cargotest::CargoTestReporter::new(__allure_results_dir)
+  let __allure_reporter = ::allure_cargotest::__private::new_reporter()
     .expect(\"allure reporter should be created\");
   if !__allure_reporter.is_selected({test_name:?}, Some({test_name:?}), None, None) {{
     return;
@@ -255,9 +251,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     } else if is_async {
         format!(
             "{{
-  let __allure_results_dir = ::std::env::var(\"ALLURE_RESULTS_DIR\")
-    .unwrap_or_else(|_| \"target/allure-results\".to_string());
-  let __allure_reporter = ::allure_cargotest::CargoTestReporter::new(__allure_results_dir)
+  let __allure_reporter = ::allure_cargotest::__private::new_reporter()
     .expect(\"allure reporter should be created\");
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
   let __allure_title_path = ::allure_cargotest::__private::title_path(file!(), env!(\"CARGO_MANIFEST_DIR\"));
@@ -268,9 +262,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     } else {
         format!(
             "{{
-  let __allure_results_dir = ::std::env::var(\"ALLURE_RESULTS_DIR\")
-    .unwrap_or_else(|_| \"target/allure-results\".to_string());
-  let __allure_reporter = ::allure_cargotest::CargoTestReporter::new(__allure_results_dir)
+  let __allure_reporter = ::allure_cargotest::__private::new_reporter()
     .expect(\"allure reporter should be created\");
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
   let __allure_title_path = ::allure_cargotest::__private::title_path(file!(), env!(\"CARGO_MANIFEST_DIR\"));

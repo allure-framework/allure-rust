@@ -15,14 +15,16 @@ use std::{
     task::{Context, Poll},
 };
 
-mod labels;
 #[cfg(test)]
 mod test_utils;
 mod testplan;
 
 pub use testplan::{TestPlan, TestPlanEntry};
 
-use allure_rust_commons::{AllureFacade, AllureRuntime, FileSystemResultsWriter};
+use allure_rust_commons::{
+    apply_common_runtime_labels, apply_config_labels, apply_synthetic_suite_labels, title_path,
+    AllureFacade, AllureRuntime, FileSystemResultsWriter,
+};
 
 thread_local! {
     static CURRENT_ALLURE: RefCell<Option<AllureFacade>> = const { RefCell::new(None) };
@@ -30,7 +32,11 @@ thread_local! {
 
 pub mod __private {
     use super::CURRENT_ALLURE;
-    use super::{catch_unwind, labels, AllureFacade, AssertUnwindSafe, Context, Future, Pin, Poll};
+    use super::{
+        apply_config_labels as common_apply_config_labels, catch_unwind,
+        title_path as common_title_path, AllureFacade, AssertUnwindSafe, CargoTestReporter,
+        Context, FileSystemResultsWriter, Future, Pin, Poll, ReporterError,
+    };
 
     pub struct CurrentAllureGuard {
         previous: Option<AllureFacade>,
@@ -45,12 +51,13 @@ pub mod __private {
         CURRENT_ALLURE.with(|current| current.borrow().clone())
     }
 
+    pub fn new_reporter() -> Result<CargoTestReporter, ReporterError> {
+        let writer = FileSystemResultsWriter::from_env()?;
+        Ok(CargoTestReporter::from_writer(writer))
+    }
+
     pub fn title_path(file: &str, manifest_dir: &str) -> Vec<String> {
-        relative_file_path(file, manifest_dir)
-            .split('/')
-            .filter(|part| !part.is_empty())
-            .map(ToString::to_string)
-            .collect()
+        common_title_path(file, manifest_dir)
     }
 
     pub fn apply_config_labels(
@@ -59,7 +66,7 @@ pub mod __private {
         module_path: &str,
         title_path: &[String],
     ) {
-        labels::add_config_labels(allure, manifest_dir, module_path, title_path);
+        common_apply_config_labels(allure, manifest_dir, module_path, title_path);
     }
 
     impl Drop for CurrentAllureGuard {
@@ -68,31 +75,6 @@ pub mod __private {
                 current.replace(self.previous.take());
             });
         }
-    }
-
-    fn relative_file_path(file: &str, manifest_dir: &str) -> String {
-        let file = file.replace('\\', "/");
-        let manifest_dir = manifest_dir.replace('\\', "/");
-        if let Some(relative) = file
-            .strip_prefix(&manifest_dir)
-            .map(|path| path.trim_start_matches('/'))
-        {
-            return relative.to_string();
-        }
-
-        let Some(package_name) = manifest_dir.rsplit('/').next() else {
-            return file;
-        };
-        let package_segment = format!("/{package_name}/");
-        if let Some((_, relative)) = file.split_once(&package_segment) {
-            return relative.to_string();
-        }
-        let package_prefix = format!("{package_name}/");
-        if let Some(relative) = file.strip_prefix(&package_prefix) {
-            return relative.to_string();
-        }
-
-        file
     }
 
     pub async fn catch_unwind_async<F>(future: F) -> std::thread::Result<F::Output>
@@ -192,11 +174,15 @@ pub struct CargoTestReporter {
 impl CargoTestReporter {
     pub fn new<P: AsRef<Path>>(results_dir: P) -> Result<Self, ReporterError> {
         let writer = FileSystemResultsWriter::new(results_dir)?;
+        Ok(Self::from_writer(writer))
+    }
+
+    fn from_writer(writer: FileSystemResultsWriter) -> Self {
         let runtime = AllureRuntime::new(writer);
-        Ok(Self {
+        Self {
             allure: AllureFacade::with_lifecycle(runtime.lifecycle()),
             test_plan: TestPlan::from_env(),
-        })
+        }
     }
 
     pub fn allure(&self) -> &AllureFacade {
@@ -229,8 +215,9 @@ impl CargoTestReporter {
         } else {
             self.allure.start_test(test_name);
         }
-        labels::add_default_and_global_labels(&self.allure);
-        labels::add_synthetic_suite_labels(&self.allure, full_name);
+        apply_common_runtime_labels(&self.allure);
+        self.allure.label("framework", "cargo-test");
+        apply_synthetic_suite_labels(&self.allure, full_name);
         let _current_allure = __private::push_current_allure(&self.allure);
         let result = catch_unwind(AssertUnwindSafe(|| f(&self.allure)));
         match result {
@@ -276,8 +263,9 @@ impl CargoTestReporter {
         } else {
             self.allure.start_test(test_name);
         }
-        labels::add_default_and_global_labels(&self.allure);
-        labels::add_synthetic_suite_labels(&self.allure, full_name);
+        apply_common_runtime_labels(&self.allure);
+        self.allure.label("framework", "cargo-test");
+        apply_synthetic_suite_labels(&self.allure, full_name);
         let result = __private::run_with_current_allure(self.allure.clone(), future).await;
         match result {
             Ok(_) => self.allure.end_test(Status::Passed, None),
@@ -315,7 +303,8 @@ impl CargoTestReporter {
         F: FnOnce(&AllureFacade) -> (Status, Option<StatusDetails>, Option<Box<dyn Any + Send>>),
     {
         self.allure.start_test(name);
-        labels::add_default_and_global_labels(&self.allure);
+        apply_common_runtime_labels(&self.allure);
+        self.allure.label("framework", "cargo-test");
         let _current_allure = __private::push_current_allure(&self.allure);
         let (status, details, panic_payload) = f(&self.allure);
         self.allure.end_test(status, details);
@@ -329,7 +318,8 @@ impl CargoTestReporter {
         F: Future<Output = (Status, Option<StatusDetails>, Option<Box<dyn Any + Send>>)>,
     {
         self.allure.start_test(name);
-        labels::add_default_and_global_labels(&self.allure);
+        apply_common_runtime_labels(&self.allure);
+        self.allure.label("framework", "cargo-test");
         let result = __private::run_with_current_allure(self.allure.clone(), future).await;
         match result {
             Ok((status, details, panic_payload)) => {

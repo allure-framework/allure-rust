@@ -1,11 +1,18 @@
 use std::{
     collections::HashMap,
+    env,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
 
-use crate::model::{Categories, Globals, TestResult, TestResultContainer};
+use crate::{
+    http_exchange::{HTTP_EXCHANGE_ATTACHMENT_EXTENSION, HTTP_EXCHANGE_ATTACHMENT_MIME},
+    model::{Categories, Globals, TestResult, TestResultContainer},
+};
+
+pub const ALLURE_RESULTS_DIR_ENV: &str = "ALLURE_RESULTS_DIR";
+pub const DEFAULT_RESULTS_DIR: &str = "target/allure-results";
 
 #[derive(Debug, Clone)]
 pub struct FileSystemResultsWriter {
@@ -13,6 +20,10 @@ pub struct FileSystemResultsWriter {
 }
 
 impl FileSystemResultsWriter {
+    pub fn from_env() -> std::io::Result<Self> {
+        Self::new(results_dir_from_env())
+    }
+
     pub fn new<P: AsRef<Path>>(out_dir: P) -> std::io::Result<Self> {
         fs::create_dir_all(&out_dir)?;
         Ok(Self {
@@ -117,6 +128,12 @@ impl FileSystemResultsWriter {
     }
 }
 
+pub fn results_dir_from_env() -> PathBuf {
+    env::var_os(ALLURE_RESULTS_DIR_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_RESULTS_DIR))
+}
+
 pub(crate) fn attachment_source_name(
     uuid: &str,
     attachment_name: Option<&str>,
@@ -157,6 +174,7 @@ fn extension_from_content_type(content_type: Option<&str>) -> Option<String> {
         "text/csv" => ".csv",
         "text/xml" => ".xml",
         "application/json" => ".json",
+        HTTP_EXCHANGE_ATTACHMENT_MIME => HTTP_EXCHANGE_ATTACHMENT_EXTENSION,
         "application/xml" => ".xml",
         "application/yaml" | "application/x-yaml" | "text/yaml" => ".yaml",
         "image/png" => ".png",

@@ -10,6 +10,8 @@ use std::{
 };
 
 use crate::{
+    config,
+    http_exchange::{HttpExchange, HTTP_EXCHANGE_ATTACHMENT_MIME, HTTP_EXCHANGE_ATTACHMENT_NAME},
     md5::md5_hex,
     model::{
         Attachment, FixtureResult, Label, Link, Parameter, Stage, Status, StatusDetails,
@@ -19,7 +21,7 @@ use crate::{
 };
 
 thread_local! {
-    static ACTIVE_TEST_ROOT: RefCell<Option<String>> = const { RefCell::new(None) };
+    static ACTIVE_TEST_ROOT: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     static ACTIVE_SCOPE_ROOT: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
@@ -240,6 +242,11 @@ impl AllureLifecycle {
         let name = params.name;
         let uuid = params.uuid.unwrap_or_else(next_id);
         let full_name = params.full_name.or_else(|| Some(name.clone()));
+        let mut labels = config::global_labels_from_environment()
+            .into_iter()
+            .map(|(name, value)| Label { name, value })
+            .collect::<Vec<_>>();
+        labels.extend(params.labels);
 
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
         lock.tests.insert(
@@ -256,7 +263,7 @@ impl AllureLifecycle {
                     status: params.status,
                     status_details: params.status_details,
                     stage: params.stage.or(Some(Stage::Running)),
-                    labels: params.labels,
+                    labels,
                     links: params.links,
                     parameters: params.parameters,
                     steps: params.steps,
@@ -269,15 +276,15 @@ impl AllureLifecycle {
                 linked_scopes: Vec::new(),
             },
         );
-        ACTIVE_TEST_ROOT.with(|cell| *cell.borrow_mut() = Some(uuid));
+        ACTIVE_TEST_ROOT.with(|cell| cell.borrow_mut().push(uuid));
     }
 
     pub fn current_test_uuid(&self) -> Option<String> {
-        ACTIVE_TEST_ROOT.with(|cell| cell.borrow().clone())
+        ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned())
     }
 
     pub fn stop_test_case(&self, status: Status, details: Option<StatusDetails>) {
-        let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().clone()) else {
+        let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned()) else {
             return;
         };
 
@@ -297,8 +304,11 @@ impl AllureLifecycle {
         }
 
         ACTIVE_TEST_ROOT.with(|cell| {
-            if cell.borrow().as_deref() == Some(test_uuid.as_str()) {
-                *cell.borrow_mut() = None;
+            let mut roots = cell.borrow_mut();
+            if roots.last().is_some_and(|uuid| uuid == &test_uuid) {
+                roots.pop();
+            } else {
+                roots.retain(|uuid| uuid != &test_uuid);
             }
         });
     }
@@ -307,7 +317,7 @@ impl AllureLifecycle {
     where
         F: FnOnce(&mut TestResult),
     {
-        let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().clone()) else {
+        let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned()) else {
             return;
         };
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
@@ -485,7 +495,7 @@ impl AllureLifecycle {
                 }
             }
 
-            if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().clone()) {
+            if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned()) {
                 if let Some(test_state) = lock.tests.get_mut(&test_uuid) {
                     if let Some(step) = test_state.step_stack.last_mut() {
                         step.attachments.push(attachment);
@@ -494,6 +504,16 @@ impl AllureLifecycle {
                     }
                 }
             }
+        }
+    }
+
+    pub fn add_http_exchange(&self, exchange: HttpExchange) {
+        self.add_http_exchange_named(HTTP_EXCHANGE_ATTACHMENT_NAME, exchange);
+    }
+
+    pub fn add_http_exchange_named(&self, name: impl Into<String>, exchange: HttpExchange) {
+        if let Ok(bytes) = serde_json::to_vec(&exchange) {
+            self.add_attachment(name, HTTP_EXCHANGE_ATTACHMENT_MIME, &bytes);
         }
     }
 
@@ -520,7 +540,7 @@ impl AllureLifecycle {
             }
         }
 
-        if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().clone()) {
+        if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned()) {
             if let Some(test_state) = lock.tests.get_mut(&test_uuid) {
                 test_state.step_stack.push(step);
             }
@@ -556,7 +576,7 @@ impl AllureLifecycle {
             }
         }
 
-        if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().clone()) {
+        if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned()) {
             if let Some(test_state) = lock.tests.get_mut(&test_uuid) {
                 stop_one_step(
                     &mut test_state.step_stack,
@@ -625,7 +645,7 @@ impl AllureLifecycle {
             }
         }
 
-        if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().clone()) {
+        if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned()) {
             if let Some(test_state) = lock.tests.get_mut(&test_uuid) {
                 if let Some(step) = test_state.step_stack.last_mut() {
                     update(step);

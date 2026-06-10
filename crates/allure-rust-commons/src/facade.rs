@@ -5,6 +5,7 @@ use std::{
 
 use crate::{
     error_classifier,
+    http_exchange::HttpExchange,
     lifecycle::{AllureLifecycle, StartTestCaseParams},
     model::{Status, StatusDetails},
 };
@@ -133,6 +134,18 @@ impl AllureFacade {
     ) {
         if let Some(l) = &self.lifecycle {
             l.add_attachment(name, content_type, body.as_ref());
+        }
+    }
+
+    pub fn http_exchange(&self, exchange: HttpExchange) {
+        if let Some(l) = &self.lifecycle {
+            l.add_http_exchange(exchange);
+        }
+    }
+
+    pub fn http_exchange_named(&self, name: impl Into<String>, exchange: HttpExchange) {
+        if let Some(l) = &self.lifecycle {
+            l.add_http_exchange_named(name, exchange);
         }
     }
 
