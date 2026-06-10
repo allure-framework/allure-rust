@@ -26,7 +26,7 @@ jobs:
     env:
       ALLURE_MATRIX_ENV: ${{ matrix.os }}-rust-stable
       ALLURE_RESULTS_DIR: allure-results
-      ALLURE_SAMPLE_RESULTS_DIR: target/allure-sample-smoke-results/${{ matrix.os }}-rust-stable
+      ALLURE_SMOKE_RESULTS_DIR: target/allure-cargotest-smoke-results/${{ matrix.os }}-rust-stable
       ALLURE_TEST_DUMP_NAME: allure-results-${{ matrix.os }}-rust-stable
     steps:
       - name: Checkout
@@ -61,19 +61,19 @@ jobs:
           npx -y allure@3 run \
             --config ./allurerc.mjs \
             --environment="${{ env.ALLURE_MATRIX_ENV }}" \
-            -- cargo test --workspace --exclude allure-cargotest-ci-samples --all-targets
+            -- cargo test --workspace --all-targets
 
-      - name: Run sample smoke check
+      - name: Run cargotest smoke check
         if: always()
         run: |
           npx -y allure@3 check \
             --config ./allurerc.mjs \
             --output="${ALLURE_RESULTS_DIR}" \
-            --name="allure-cargotest sample smoke (${ALLURE_MATRIX_ENV})" \
+            --name="allure-cargotest smoke (${ALLURE_MATRIX_ENV})" \
             --tag="environment:${ALLURE_MATRIX_ENV}" \
             --tag="os:${{ matrix.os }}" \
             --tag="rust:stable" \
-            -- bash ./scripts/check-cargotest-samples.sh
+            -- bash ./scripts/check-cargotest-smoke.sh
 
       - name: Pack Allure test dump
         if: always()

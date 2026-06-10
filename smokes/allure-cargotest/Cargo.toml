@@ -1,15 +1,15 @@
 [package]
-name = "allure-cargotest-ci-samples"
+name = "allure-cargotest-smoke"
 version = "0.0.0"
 edition = "2021"
 publish = false
 autotests = false
 
 [dependencies]
-allure-cargotest = { path = "../.." }
+allure-cargotest = { path = "../../crates/allure-cargotest" }
 
 [package.metadata.allure.labels]
-module = "allure-cargotest-ci-samples"
+module = "allure-cargotest-smoke"
 
 [[package.metadata.allure.modules]]
 path = "tests/default_and_global_labels.rs"

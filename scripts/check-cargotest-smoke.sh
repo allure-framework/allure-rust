@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-results_dir="${ALLURE_SAMPLE_RESULTS_DIR:-target/allure-sample-smoke-results}"
-expected_file="${ALLURE_SAMPLE_EXPECTED_FULLNAMES:-crates/allure-cargotest/tests/samples/expected-fullnames.txt}"
+results_dir="${ALLURE_SMOKE_RESULTS_DIR:-target/allure-cargotest-smoke-results}"
+expected_file="${ALLURE_SMOKE_EXPECTED_FULLNAMES:-smokes/allure-cargotest/expected-fullnames.txt}"
 
 case "$results_dir" in
   /* | [A-Za-z]:/* | [A-Za-z]:\\*) ;;
@@ -12,7 +12,7 @@ esac
 rm -rf "$results_dir"
 mkdir -p "$results_dir"
 
-ALLURE_RESULTS_DIR="$results_dir" cargo test -p allure-cargotest-ci-samples
+ALLURE_RESULTS_DIR="$results_dir" cargo test --manifest-path smokes/allure-cargotest/Cargo.toml
 
 result_list="$(mktemp)"
 actual_file="$(mktemp)"
@@ -31,4 +31,4 @@ done < "$result_list" | sort > "$actual_file"
 diff -u "$expected_file" "$actual_file"
 
 result_count="$(wc -l < "$result_list" | tr -d '[:space:]')"
-echo "Sample smoke reported $result_count expected tests."
+echo "Allure cargotest smoke reported $result_count expected tests."

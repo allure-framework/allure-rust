@@ -783,9 +783,7 @@ fn prepare_sample_project(sample_name: &str) -> TempProjectDir {
         .parent()
         .expect("workspace root should exist")
         .to_path_buf();
-    let samples_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("samples");
+    let samples_root = repo_root.join("smokes").join("allure-cargotest");
 
     let project_dir = TempProjectDir::new("allure-cargotest-e2e");
     let src_dir = project_dir.path().join("src");
