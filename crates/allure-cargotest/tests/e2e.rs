@@ -810,6 +810,7 @@ fn prepare_sample_project(sample_name: &str) -> TempProjectDir {
         ""
     };
 
+    let allure_cargotest_path = toml_string(&repo_root.join("crates").join("allure-cargotest"));
     let cargo_toml = format!(
         r#"[package]
 name = "allure-cargotest-sample-{}"
@@ -819,7 +820,7 @@ edition = "2021"
 [workspace]
 
 [dependencies]
-allure-cargotest = {{ path = "{}" }}
+allure-cargotest = {{ path = {} }}
 {}
 
 [package.metadata.allure.labels]
@@ -833,19 +834,33 @@ labels = {{ component = "sample-fixture", a = "a-value", b = ["b-value1", "b-val
 module = "allure"
 labels = {{ layer = "module-config" }}
 "#,
-        sample_name,
-        repo_root
-            .join("crates")
-            .join("allure-cargotest")
-            .to_str()
-            .expect("path should be utf-8"),
-        extra_dependencies,
-        sample_name
+        sample_name, allure_cargotest_path, extra_dependencies, sample_name
     );
     fs::write(project_dir.path().join("Cargo.toml"), cargo_toml)
         .expect("sample Cargo.toml should be generated");
 
     project_dir
+}
+
+fn toml_string(path: &Path) -> String {
+    let value = path
+        .to_str()
+        .expect("path should be utf-8")
+        .replace('\\', "/");
+    let mut output = String::with_capacity(value.len() + 2);
+    output.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => output.push_str("\\\\"),
+            '"' => output.push_str("\\\""),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            ch => output.push(ch),
+        }
+    }
+    output.push('"');
+    output
 }
 
 fn run_cargo_test(
