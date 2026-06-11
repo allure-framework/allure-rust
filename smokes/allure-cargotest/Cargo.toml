@@ -12,10 +12,6 @@ allure-rust-commons = { path = "../../crates/allure-rust-commons" }
 [package.metadata.allure.labels]
 module = "allure-cargotest-smoke"
 
-[[test]]
-name = "assertions"
-path = "tests/assertions.rs"
-
 [[package.metadata.allure.modules]]
 path = "tests/default_and_global_labels.rs"
 labels = { component = "sample-fixture", a = "a-value", b = ["b-value1", "b-value2"] }
