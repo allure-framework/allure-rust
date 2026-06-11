@@ -183,10 +183,10 @@ fn nested_test_contexts_restore_outer_active_test() {
 }
 
 #[test]
-fn facade_http_exchange_named_places_attachment_on_active_step() {
+fn facade_http_exchange_named_wraps_attachment_in_ordered_step() {
     allure_test(
         module_path!(),
-        "facade_http_exchange_named_places_attachment_on_active_step",
+        "facade_http_exchange_named_wraps_attachment_in_ordered_step",
         || {
             let (lifecycle, out_dir) = make_lifecycle("facade-http-exchange-step");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
@@ -206,13 +206,172 @@ fn facade_http_exchange_named_places_attachment_on_active_step() {
                 .as_array()
                 .expect("root attachments should be an array")
                 .is_empty());
-            let attachment = &results[0]["steps"][0]["attachments"][0];
+            assert_eq!(results[0]["steps"][0]["name"], "call api");
+            assert!(results[0]["steps"][0]["attachments"]
+                .as_array()
+                .expect("active step attachments should be an array")
+                .is_empty());
+            assert_eq!(results[0]["steps"][0]["steps"][0]["name"], "Create order");
+            let attachment = &results[0]["steps"][0]["steps"][0]["attachments"][0];
+            assert_eq!(results[0]["steps"][0]["steps"][0]["status"], "passed");
             assert_eq!(attachment["name"], "Create order");
             assert_eq!(attachment["type"], HTTP_EXCHANGE_ATTACHMENT_MIME);
             let source = attachment["source"]
                 .as_str()
                 .expect("attachment source should be a string");
             assert!(source.ends_with("-attachment.httpexchange"));
+        },
+    );
+}
+
+#[test]
+fn reporter_http_exchange_keeps_exact_active_step_owner() {
+    allure_test(
+        module_path!(),
+        "reporter_http_exchange_keeps_exact_active_step_owner",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("reporter-http-exchange-step");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
+
+            lifecycle.start_test_case("http-step-test");
+            lifecycle.start_step("call api");
+            crate::reporter::http_exchange_named(
+                &allure,
+                "Create order",
+                HttpExchange::new("POST", "https://api.example.com/v1/orders"),
+            );
+            lifecycle.stop_step(Status::Passed, None);
+            lifecycle.stop_test_case(Status::Passed, None);
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            let attachment = &results[0]["steps"][0]["attachments"][0];
+            assert_eq!(results[0]["steps"][0]["name"], "call api");
+            assert_eq!(attachment["name"], "Create order");
+            assert_eq!(attachment["type"], HTTP_EXCHANGE_ATTACHMENT_MIME);
+        },
+    );
+}
+
+#[test]
+fn facade_metadata_parameters_and_wrapped_file_attachments_are_persisted() {
+    allure_test(
+        module_path!(),
+        "facade_metadata_parameters_and_wrapped_file_attachments_are_persisted",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("facade-reference-surface");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
+            let request_path = out_dir.join("request-source.json");
+            let trace_path = out_dir.join("trace-source.zip");
+            fs::write(&request_path, br#"{"ok":true}"#).expect("request source should be writable");
+            fs::write(&trace_path, b"trace bytes").expect("trace source should be writable");
+
+            lifecycle.start_test_case(
+                StartTestCaseParams::new("original").with_full_name("pkg::original"),
+            );
+            allure.display_name("renamed test");
+            allure.history_id("explicit-history");
+            allure.test_case_id("explicit-case");
+            allure.allure_id("A-1");
+            allure.parameter_with_options(
+                "secret",
+                "value",
+                Some(true),
+                Some(ParameterMode::Masked),
+            );
+            allure.attachment("inline.json", "application/json", br#"{"inline":true}"#);
+            allure
+                .attachment_path("from-path.json", "application/json", &request_path)
+                .expect("path attachment should be recorded");
+            allure
+                .attach_trace_named("session-trace.zip", &trace_path)
+                .expect("trace attachment should be recorded");
+            lifecycle.stop_test_case(Status::Passed, None);
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            assert_eq!(results.len(), 1);
+            let result = &results[0];
+            assert_eq!(result["name"], "renamed test");
+            assert_eq!(result["fullName"], "pkg::original");
+            assert_eq!(result["historyId"], "explicit-history");
+            assert_eq!(result["testCaseId"], "explicit-case");
+            assert!(contains_label(result, "ALLURE_ID", "A-1"));
+            assert_eq!(result["parameters"][0]["name"], "secret");
+            assert_eq!(result["parameters"][0]["excluded"], true);
+            assert_eq!(result["parameters"][0]["mode"], "masked");
+            assert!(result["attachments"]
+                .as_array()
+                .expect("root attachments should be an array")
+                .is_empty());
+
+            let steps = result["steps"]
+                .as_array()
+                .expect("wrapped attachments should be steps");
+            assert_eq!(steps[0]["name"], "inline.json");
+            assert_eq!(steps[0]["attachments"][0]["name"], "inline.json");
+            assert_eq!(steps[0]["attachments"][0]["type"], "application/json");
+            assert_eq!(steps[1]["name"], "from-path.json");
+            assert_eq!(steps[1]["attachments"][0]["name"], "from-path.json");
+            assert_eq!(steps[2]["name"], "session-trace.zip");
+            assert_eq!(
+                steps[2]["attachments"][0]["type"],
+                crate::PLAYWRIGHT_TRACE_ATTACHMENT_MIME
+            );
+            let trace_source = steps[2]["attachments"][0]["source"]
+                .as_str()
+                .expect("trace source should be a string");
+            assert!(trace_source.ends_with("-attachment.zip"));
+        },
+    );
+}
+
+#[test]
+fn facade_global_diagnostics_use_lifecycle_writer() {
+    allure_test(
+        module_path!(),
+        "facade_global_diagnostics_use_lifecycle_writer",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("facade-global-diagnostics");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle);
+
+            allure
+                .global_attachment("runner.log", "text/plain", b"runner output")
+                .expect("global attachment should be recorded");
+            allure
+                .global_error_with_trace("runner failed", "stack trace")
+                .expect("global error should be recorded");
+
+            let globals = read_jsons_with_suffix(&out_dir, "-globals.json");
+            assert_eq!(globals.len(), 2);
+            let attachment_globals = globals
+                .iter()
+                .find(|value| {
+                    value["attachments"]
+                        .as_array()
+                        .is_some_and(|attachments| !attachments.is_empty())
+                })
+                .expect("global attachment file should exist");
+            let attachment = &attachment_globals["attachments"][0];
+            assert_eq!(attachment["name"], "runner.log");
+            assert_eq!(attachment["contentType"], "text/plain");
+            let source = attachment["source"]
+                .as_str()
+                .expect("global attachment source should be a string");
+            assert_eq!(
+                fs::read_to_string(out_dir.join(source))
+                    .expect("global attachment body should be readable"),
+                "runner output"
+            );
+
+            let error_globals = globals
+                .iter()
+                .find(|value| {
+                    value["errors"]
+                        .as_array()
+                        .is_some_and(|errors| !errors.is_empty())
+                })
+                .expect("global error file should exist");
+            assert_eq!(error_globals["errors"][0]["message"], "runner failed");
+            assert_eq!(error_globals["errors"][0]["trace"], "stack trace");
         },
     );
 }
@@ -276,9 +435,7 @@ fn start_test_case_accepts_optional_test_result_fields() {
             let result = &results[0];
             assert_eq!(result["uuid"], "custom-uuid");
             assert_eq!(result["fullName"], "pkg::display_name");
-            let parameter_hash = md5_hex("browser:firefox");
-            let expected_history_id = md5_hex(&format!("custom-case:{parameter_hash}"));
-            assert_eq!(result["historyId"], expected_history_id);
+            assert_eq!(result["historyId"], "custom-history");
             assert_eq!(result["testCaseId"], "custom-case");
             assert_eq!(result["description"], "markdown");
             assert_eq!(result["descriptionHtml"], "<p>html</p>");
@@ -575,17 +732,118 @@ fn log_step_with_uses_same_start_and_stop_timestamp() {
 }
 
 #[test]
-fn step_with_classifies_panic_and_rethrows_original_error() {
+fn runtime_stage_boundaries_create_sibling_steps_and_nest_runtime_steps() {
     allure_test(
         module_path!(),
-        "step_with_classifies_panic_and_rethrows_original_error",
+        "runtime_stage_boundaries_create_sibling_steps_and_nest_runtime_steps",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("runtime-stage-siblings");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
+
+            lifecycle.start_test_case("staged-test");
+            allure.stage("prepare data");
+            allure.log_step("created customer");
+            allure.stage("submit order");
+            allure.step("post order", || {
+                allure.log_step("request sent");
+            });
+            allure.stage("verify result");
+            allure.log_step("status is created");
+            lifecycle.stop_test_case(Status::Passed, None);
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            let steps = results[0]["steps"]
+                .as_array()
+                .expect("steps should be serialized");
+            assert_eq!(steps.len(), 3);
+            assert_eq!(steps[0]["name"], "prepare data");
+            assert_eq!(steps[0]["status"], "passed");
+            assert_eq!(steps[0]["steps"][0]["name"], "created customer");
+            assert_eq!(steps[1]["name"], "submit order");
+            assert_eq!(steps[1]["steps"][0]["name"], "post order");
+            assert_eq!(steps[1]["steps"][0]["steps"][0]["name"], "request sent");
+            assert_eq!(steps[2]["name"], "verify result");
+            assert_eq!(steps[2]["steps"][0]["name"], "status is created");
+        },
+    );
+}
+
+#[test]
+fn runtime_stage_inside_wrapping_step_is_nested_under_that_step() {
+    allure_test(
+        module_path!(),
+        "runtime_stage_inside_wrapping_step_is_nested_under_that_step",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("runtime-stage-inside-step");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
+
+            lifecycle.start_test_case("nested-stage-test");
+            allure.step("parent step", || {
+                allure.stage("prepare child");
+                allure.log_step("nested runtime step");
+                allure.stage("verify child");
+            });
+            lifecycle.stop_test_case(Status::Passed, None);
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            let parent = &results[0]["steps"][0];
+            assert_eq!(parent["name"], "parent step");
+            assert_eq!(parent["status"], "passed");
+            assert_eq!(parent["steps"][0]["name"], "prepare child");
+            assert_eq!(
+                parent["steps"][0]["steps"][0]["name"],
+                "nested runtime step"
+            );
+            assert_eq!(parent["steps"][1]["name"], "verify child");
+            assert_eq!(parent["steps"][1]["status"], "passed");
+        },
+    );
+}
+
+#[test]
+fn runtime_stage_inherits_enclosing_failure_status() {
+    allure_test(
+        module_path!(),
+        "runtime_stage_inherits_enclosing_failure_status",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("runtime-stage-failure");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
+
+            lifecycle.start_test_case("failed-stage-test");
+            allure.stage("verify result");
+            lifecycle.stop_test_case(
+                Status::Failed,
+                Some(StatusDetails {
+                    message: Some("expected created".to_string()),
+                    trace: None,
+                    actual: Some("pending".to_string()),
+                    expected: Some("created".to_string()),
+                }),
+            );
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            let stage = &results[0]["steps"][0];
+            assert_eq!(stage["name"], "verify result");
+            assert_eq!(stage["status"], "failed");
+            assert_eq!(stage["statusDetails"]["message"], "expected created");
+            assert_eq!(stage["statusDetails"]["actual"], "pending");
+            assert_eq!(stage["statusDetails"]["expected"], "created");
+        },
+    );
+}
+
+#[test]
+fn step_classifies_panic_and_rethrows_original_error() {
+    allure_test(
+        module_path!(),
+        "step_classifies_panic_and_rethrows_original_error",
         || {
             let (lifecycle, out_dir) = make_lifecycle("step-with-classifies-panic");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
 
             lifecycle.start_test_case("panic-step");
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                allure.step_with("assertion step", || {
+                allure.step("assertion step", || {
                     panic!("assertion failed: expected true")
                 });
             }));

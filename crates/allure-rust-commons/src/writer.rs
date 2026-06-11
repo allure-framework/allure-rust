@@ -1,29 +1,40 @@
+//! Filesystem writer for Allure result artifacts.
+
 use std::{
     collections::HashMap,
-    env,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
 
 use crate::{
+    config::global_config,
     http_exchange::{HTTP_EXCHANGE_ATTACHMENT_EXTENSION, HTTP_EXCHANGE_ATTACHMENT_MIME},
     model::{Categories, Globals, TestResult, TestResultContainer},
 };
 
+/// Environment variable used to override the Allure results directory.
 pub const ALLURE_RESULTS_DIR_ENV: &str = "ALLURE_RESULTS_DIR";
+/// Default Allure results directory.
 pub const DEFAULT_RESULTS_DIR: &str = "target/allure-results";
+/// MIME type used for Playwright trace attachments.
+pub const PLAYWRIGHT_TRACE_ATTACHMENT_MIME: &str = "application/vnd.allure.playwright-trace";
+/// File extension used for Playwright trace attachments.
+pub const PLAYWRIGHT_TRACE_ATTACHMENT_EXTENSION: &str = ".zip";
 
+/// Writes Allure result files and attachments into a directory.
 #[derive(Debug, Clone)]
 pub struct FileSystemResultsWriter {
     out_dir: PathBuf,
 }
 
 impl FileSystemResultsWriter {
+    /// Creates a writer using the configured results directory.
     pub fn from_env() -> std::io::Result<Self> {
         Self::new(results_dir_from_env())
     }
 
+    /// Creates a writer for the given output directory.
     pub fn new<P: AsRef<Path>>(out_dir: P) -> std::io::Result<Self> {
         fs::create_dir_all(&out_dir)?;
         Ok(Self {
@@ -31,20 +42,24 @@ impl FileSystemResultsWriter {
         })
     }
 
+    /// Writes a test result JSON file.
     pub fn write_result(&self, result: &TestResult) -> std::io::Result<PathBuf> {
         self.write_result_typed(result)
     }
 
+    /// Writes a typed test result JSON file.
     pub fn write_result_typed(&self, result: &TestResult) -> std::io::Result<PathBuf> {
         let path = self.out_dir.join(format!("{}-result.json", result.uuid));
         self.write_json(&path, result)?;
         Ok(path)
     }
 
+    /// Writes a test result container JSON file.
     pub fn write_container(&self, container: &TestResultContainer) -> std::io::Result<PathBuf> {
         self.write_container_typed(container)
     }
 
+    /// Writes a typed test result container JSON file.
     pub fn write_container_typed(
         &self,
         container: &TestResultContainer,
@@ -56,10 +71,12 @@ impl FileSystemResultsWriter {
         Ok(path)
     }
 
+    /// Writes a globals JSON file for run-level diagnostics.
     pub fn write_globals(&self, globals: &Globals) -> std::io::Result<PathBuf> {
         self.write_globals_typed(globals)
     }
 
+    /// Writes a typed globals JSON file for run-level diagnostics.
     pub fn write_globals_typed(&self, globals: &Globals) -> std::io::Result<PathBuf> {
         let path = self
             .out_dir
@@ -68,6 +85,7 @@ impl FileSystemResultsWriter {
         Ok(path)
     }
 
+    /// Writes `environment.properties` with deterministic key ordering.
     pub fn write_environment_properties(
         &self,
         properties: &HashMap<String, String>,
@@ -84,20 +102,24 @@ impl FileSystemResultsWriter {
         Ok(path)
     }
 
+    /// Writes the Allure categories file.
     pub fn write_categories(&self, categories: &Categories) -> std::io::Result<PathBuf> {
         self.write_categories_typed(categories)
     }
 
+    /// Writes the typed Allure categories file.
     pub fn write_categories_typed(&self, categories: &Categories) -> std::io::Result<PathBuf> {
         let path = self.out_dir.join("categories.json");
         self.write_json(&path, categories)?;
         Ok(path)
     }
 
+    /// Writes an attachment with an explicit source filename.
     pub fn write_attachment(&self, source_name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
         self.write_attachment_named(source_name, bytes)
     }
 
+    /// Writes an attachment with an explicit source filename.
     pub fn write_attachment_named(
         &self,
         source_name: &str,
@@ -108,6 +130,7 @@ impl FileSystemResultsWriter {
         Ok(path)
     }
 
+    /// Writes an attachment and returns the generated source filename and path.
     pub fn write_attachment_auto(
         &self,
         uuid: &str,
@@ -128,10 +151,9 @@ impl FileSystemResultsWriter {
     }
 }
 
+/// Returns the configured Allure results directory.
 pub fn results_dir_from_env() -> PathBuf {
-    env::var_os(ALLURE_RESULTS_DIR_ENV)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_RESULTS_DIR))
+    global_config().results_dir().to_path_buf()
 }
 
 pub(crate) fn attachment_source_name(
@@ -182,6 +204,7 @@ fn extension_from_content_type(content_type: Option<&str>) -> Option<String> {
         "image/gif" => ".gif",
         "image/svg+xml" => ".svg",
         "video/mp4" => ".mp4",
+        PLAYWRIGHT_TRACE_ATTACHMENT_MIME => PLAYWRIGHT_TRACE_ATTACHMENT_EXTENSION,
         _ => return None,
     };
     Some(ext.to_string())

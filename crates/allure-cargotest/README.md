@@ -2,12 +2,18 @@
 
 `allure-cargotest` is the main user-facing crate in this workspace.
 It wires Allure test lifecycle handling into `cargo test`, writes result files, and
-re-exports the `#[allure_test]` and `#[step]` macros.
+re-exports the `#[allure_test]`, `#[step]`, and `#[log_asserts]` macros.
 
 ## Add the crate
 
 ```bash
 cargo add allure-cargotest --dev
+```
+
+If you want to use the framework-neutral convenience functions directly, also add commons:
+
+```bash
+cargo add allure-rust-commons --dev
 ```
 
 ## Basic usage
@@ -17,6 +23,7 @@ During execution, results are written to `target/allure-results` by default.
 
 ```rust
 use allure_cargotest::{allure_test, step};
+use allure_rust_commons::{attachment, feature, log_step, parameter, stage};
 
 #[step]
 fn open_login_page() {
@@ -26,13 +33,37 @@ fn open_login_page() {
 #[allure_test]
 #[test]
 fn login_works() {
-    allure.epic("Web interface");
-    allure.feature("Authentication");
-    allure.story("Login with username and password");
-    allure.parameter("browser", "firefox");
+    feature("Authentication");
+    parameter("browser", "firefox");
 
+    stage("open login page");
     open_login_page();
-    allure.attachment("page.html", "text/html", "<html>...</html>");
+    log_step("login page opened");
+    stage("collect evidence");
+    attachment("page.html", "text/html", "<html>...</html>");
+}
+```
+
+The macro still provides an `allure` value in the test body for existing code. The free functions
+above use the thread-bound current Allure context from `allure-rust-commons`, so the same style can
+also be used by other framework adapters that bind that context.
+
+Runtime evidence helpers such as `attachment`, `attachment_path`, and `http_exchange` are recorded
+as ordered Allure steps by default. Adapter internals that need exact owner placement can use the
+`allure_rust_commons::reporter` module.
+
+When attribute macros are not allowed, use the commons runtime wrapper directly:
+
+```rust
+use allure_rust_commons as allure;
+
+#[test]
+fn login_works() {
+    allure::test(|| {
+        allure::feature("Authentication");
+        allure::stage("open login page");
+        allure::log_step("open login page");
+    });
 }
 ```
 
@@ -62,6 +93,45 @@ Override the default results directory with `ALLURE_RESULTS_DIR`:
 
 ```bash
 ALLURE_RESULTS_DIR=./allure-results cargo test
+```
+
+## Configure assertion logging
+
+Standard assertion logging is enabled by default. `#[allure_test]` and `#[step]` rewrite standard
+`assert!`, `assert_eq!`, `assert_ne!`, `debug_assert!`, `debug_assert_eq!`, and
+`debug_assert_ne!` calls in their function bodies so passing assertions are reported as passed
+steps and failed assertions include structured actual/expected details where applicable.
+
+Disable assertion logging globally for a package with Cargo metadata:
+
+```toml
+[package.metadata.allure]
+log_asserts = false
+```
+
+You can override the package setting for a run with `ALLURE_LOG_ASSERTS`:
+
+```bash
+ALLURE_LOG_ASSERTS=true cargo test
+ALLURE_LOG_ASSERTS=false cargo test
+```
+
+To log assertions inside helper functions that are not already annotated with `#[allure_test]` or
+`#[step]`, add `#[log_asserts]`:
+
+```rust
+use allure_cargotest::{allure_test, log_asserts};
+
+#[log_asserts]
+fn check_response() {
+    assert_eq!(200, 200);
+}
+
+#[allure_test]
+#[test]
+fn response_is_ok() {
+    check_response();
+}
 ```
 
 ## Configure labels in Cargo.toml
@@ -144,6 +214,6 @@ allure open ./target/allure-report
 ## What this crate provides
 
 - `CargoTestReporter` for manual integration when macros are not enough.
-- Re-exported `#[allure_test]` and `#[step]` macros.
+- Re-exported `#[allure_test]`, `#[step]`, and `#[log_asserts]` macros.
 - Re-exported `Status` and `StatusDetails` types.
 - Automatic lifecycle setup for `cargo test`.

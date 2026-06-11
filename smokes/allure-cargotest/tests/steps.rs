@@ -1,4 +1,5 @@
 use allure_cargotest::{allure_test, step};
+use allure_cargotest::Status;
 
 #[step]
 fn some_step_doing_something() {}
@@ -9,24 +10,18 @@ fn some_step_with_custom_name() {}
 #[allure_test]
 #[test]
 fn writes_steps() {
-    {
-        let _simple = allure.step("simple step");
-    }
+    allure.step("simple step", || {});
 
     allure.log_step("logged step");
     some_step_doing_something();
     some_step_with_custom_name();
 
-    {
-        let _failed = allure.step("failed step").failed("step failed");
-    }
+    allure.log_step_with("failed step", Some(Status::Failed), Some("step failed"));
+    allure.log_step_with("broken step", Some(Status::Broken), Some("step broken"));
 
-    {
-        let broken = allure.step("broken parent").broken("step broken");
-        {
-            let _nested = allure.step("nested child");
+    allure.step("nested parent", || {
+        allure.step("nested child", || {
             allure.attachment("nested.txt", "text/plain", "inside nested step");
-        }
-        drop(broken);
-    }
+        });
+    });
 }

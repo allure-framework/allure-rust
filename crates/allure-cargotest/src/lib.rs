@@ -1,13 +1,19 @@
+//! `cargo test` integration helpers for writing Allure results.
+//!
+//! The primary entry points are the `#[allure_test]`, `#[step]`, and `#[log_asserts]` macros.
+//! `CargoTestReporter` is available for manual integration scenarios.
+
+#![deny(missing_docs)]
+
 pub use allure_rust_commons::{Status, StatusDetails};
 /// Attribute procedural macros must live in a `proc-macro` crate.
 ///
 /// This crate re-exports `#[allure_test]` and `#[step]` so consumers only depend on
 /// `allure-cargotest` and do not need to import the macro crate directly.
-pub use allure_test_macros::{allure_test, step};
+pub use allure_test_macros::{allure_test, log_asserts, step};
 
 use std::{
     any::Any,
-    cell::RefCell,
     future::Future,
     panic::{catch_unwind, AssertUnwindSafe},
     path::Path,
@@ -15,40 +21,34 @@ use std::{
     task::{Context, Poll},
 };
 
-#[cfg(test)]
-mod test_utils;
 mod testplan;
 
 pub use testplan::{TestPlan, TestPlanEntry};
 
 use allure_rust_commons::{
-    apply_common_runtime_labels, apply_config_labels, apply_synthetic_suite_labels, title_path,
-    AllureFacade, AllureRuntime, FileSystemResultsWriter,
+    apply_common_runtime_labels, apply_config_labels, apply_synthetic_suite_labels, current_allure,
+    log_asserts_enabled, push_current_allure, title_path, AllureFacade, AllureRuntime,
+    CurrentAllureGuard, FileSystemResultsWriter,
 };
 
-thread_local! {
-    static CURRENT_ALLURE: RefCell<Option<AllureFacade>> = const { RefCell::new(None) };
-}
-
+#[doc(hidden)]
 pub mod __private {
-    use super::CURRENT_ALLURE;
     use super::{
         apply_config_labels as common_apply_config_labels, catch_unwind,
-        title_path as common_title_path, AllureFacade, AssertUnwindSafe, CargoTestReporter,
-        Context, FileSystemResultsWriter, Future, Pin, Poll, ReporterError,
+        current_allure as common_current_allure, log_asserts_enabled as common_log_asserts_enabled,
+        push_current_allure as common_push_current_allure, title_path as common_title_path,
+        AllureFacade, AssertUnwindSafe, CargoTestReporter, Context, CurrentAllureGuard,
+        FileSystemResultsWriter, Future, Pin, Poll, ReporterError, StatusDetails, TestPlan,
     };
 
-    pub struct CurrentAllureGuard {
-        previous: Option<AllureFacade>,
-    }
+    pub use allure_rust_commons::{test_with, test_with_async, TestOptions};
 
     pub fn push_current_allure(allure: &AllureFacade) -> CurrentAllureGuard {
-        let previous = CURRENT_ALLURE.with(|current| current.replace(Some(allure.clone())));
-        CurrentAllureGuard { previous }
+        common_push_current_allure(allure)
     }
 
     pub fn current_allure() -> Option<AllureFacade> {
-        CURRENT_ALLURE.with(|current| current.borrow().clone())
+        common_current_allure()
     }
 
     pub fn new_reporter() -> Result<CargoTestReporter, ReporterError> {
@@ -69,12 +69,48 @@ pub mod __private {
         common_apply_config_labels(allure, manifest_dir, module_path, title_path);
     }
 
-    impl Drop for CurrentAllureGuard {
-        fn drop(&mut self) {
-            CURRENT_ALLURE.with(|current| {
-                current.replace(self.previous.take());
-            });
+    pub fn log_asserts_enabled(manifest_dir: &str) -> bool {
+        common_log_asserts_enabled(manifest_dir)
+    }
+
+    pub fn is_selected(
+        full_name: Option<&str>,
+        allure_id: Option<&str>,
+        tags: Option<&[&str]>,
+    ) -> bool {
+        match TestPlan::from_env() {
+            Some(plan) => plan.is_selected(full_name, allure_id, tags),
+            None => true,
         }
+    }
+
+    pub fn clear_last_assertion_failure() {
+        allure_rust_commons::clear_last_assertion_failure();
+    }
+
+    pub fn status_details_for_message(message: String) -> StatusDetails {
+        allure_rust_commons::status_details_for_message(message)
+    }
+
+    pub fn record_assertion_pass(name: impl Into<String>) {
+        allure_rust_commons::record_assertion_pass(name);
+    }
+
+    #[track_caller]
+    pub fn fail_assertion(
+        name: impl Into<String>,
+        message: String,
+        actual: Option<String>,
+        expected: Option<String>,
+    ) -> ! {
+        allure_rust_commons::fail_assertion(name, message, actual, expected);
+    }
+
+    pub fn begin_step_scope(
+        allure: AllureFacade,
+        name: impl Into<String>,
+    ) -> allure_rust_commons::facade::__private::StepScope {
+        allure_rust_commons::facade::__private::begin_step_scope(allure, name)
     }
 
     pub async fn catch_unwind_async<F>(future: F) -> std::thread::Result<F::Output>
@@ -144,8 +180,10 @@ pub mod __private {
     }
 }
 
+/// Error returned by the cargo-test reporter.
 #[derive(Debug)]
 pub enum ReporterError {
+    /// Filesystem I/O failure.
     Io(std::io::Error),
 }
 
@@ -165,6 +203,7 @@ impl From<std::io::Error> for ReporterError {
     }
 }
 
+/// Manual reporter for integrating Allure with cargo-test style execution.
 #[derive(Clone)]
 pub struct CargoTestReporter {
     allure: AllureFacade,
@@ -172,6 +211,7 @@ pub struct CargoTestReporter {
 }
 
 impl CargoTestReporter {
+    /// Creates a reporter that writes results into the given directory.
     pub fn new<P: AsRef<Path>>(results_dir: P) -> Result<Self, ReporterError> {
         let writer = FileSystemResultsWriter::new(results_dir)?;
         Ok(Self::from_writer(writer))
@@ -185,10 +225,12 @@ impl CargoTestReporter {
         }
     }
 
+    /// Returns the underlying Allure facade.
     pub fn allure(&self) -> &AllureFacade {
         &self.allure
     }
 
+    /// Runs a synchronous test with a display name.
     pub fn run_test<F>(&self, name: &str, f: F)
     where
         F: FnOnce(&AllureFacade),
@@ -196,6 +238,7 @@ impl CargoTestReporter {
         self.run_test_with_metadata(name, Some(name), None, None, f);
     }
 
+    /// Runs a synchronous test with explicit metadata used for identity and plan filtering.
     pub fn run_test_with_metadata<F>(
         &self,
         test_name: &str,
@@ -215,6 +258,7 @@ impl CargoTestReporter {
         } else {
             self.allure.start_test(test_name);
         }
+        __private::clear_last_assertion_failure();
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
         apply_synthetic_suite_labels(&self.allure, full_name);
@@ -232,18 +276,14 @@ impl CargoTestReporter {
                 };
                 self.allure.end_test(
                     Status::Failed,
-                    Some(StatusDetails {
-                        message: Some(msg),
-                        trace: None,
-                        actual: None,
-                        expected: None,
-                    }),
+                    Some(__private::status_details_for_message(msg)),
                 );
                 std::panic::resume_unwind(payload);
             }
         }
     }
 
+    /// Runs an async test with explicit metadata used for identity and plan filtering.
     pub async fn run_test_with_metadata_async<F>(
         &self,
         test_name: &str,
@@ -263,6 +303,7 @@ impl CargoTestReporter {
         } else {
             self.allure.start_test(test_name);
         }
+        __private::clear_last_assertion_failure();
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
         apply_synthetic_suite_labels(&self.allure, full_name);
@@ -273,18 +314,14 @@ impl CargoTestReporter {
                 let msg = panic_message(payload.as_ref());
                 self.allure.end_test(
                     Status::Failed,
-                    Some(StatusDetails {
-                        message: Some(msg),
-                        trace: None,
-                        actual: None,
-                        expected: None,
-                    }),
+                    Some(__private::status_details_for_message(msg)),
                 );
                 std::panic::resume_unwind(payload);
             }
         }
     }
 
+    /// Returns whether a test is selected by the active Allure test plan.
     pub fn is_selected(
         &self,
         _test_name: &str,
@@ -298,11 +335,13 @@ impl CargoTestReporter {
         }
     }
 
+    /// Runs a synchronous test body that returns its final Allure result state.
     pub fn run_test_with_result<F>(&self, name: &str, f: F)
     where
         F: FnOnce(&AllureFacade) -> (Status, Option<StatusDetails>, Option<Box<dyn Any + Send>>),
     {
         self.allure.start_test(name);
+        __private::clear_last_assertion_failure();
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
         let _current_allure = __private::push_current_allure(&self.allure);
@@ -313,11 +352,13 @@ impl CargoTestReporter {
         }
     }
 
+    /// Runs an async test body that returns its final Allure result state.
     pub async fn run_test_with_result_async<F>(&self, name: &str, future: F)
     where
         F: Future<Output = (Status, Option<StatusDetails>, Option<Box<dyn Any + Send>>)>,
     {
         self.allure.start_test(name);
+        __private::clear_last_assertion_failure();
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
         let result = __private::run_with_current_allure(self.allure.clone(), future).await;
@@ -332,12 +373,7 @@ impl CargoTestReporter {
                 let msg = panic_message(payload.as_ref());
                 self.allure.end_test(
                     Status::Failed,
-                    Some(StatusDetails {
-                        message: Some(msg),
-                        trace: None,
-                        actual: None,
-                        expected: None,
-                    }),
+                    Some(__private::status_details_for_message(msg)),
                 );
                 std::panic::resume_unwind(payload);
             }
@@ -356,6 +392,7 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
 }
 
 #[macro_export]
+/// Wraps a block in a manual `CargoTestReporter::run_test` call.
 macro_rules! allure_wrap_test {
     ($reporter:expr, $name:expr, $body:block) => {{
         $reporter.run_test($name, |_| $body)

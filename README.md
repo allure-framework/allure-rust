@@ -24,7 +24,8 @@ This workspace currently includes:
 - `allure-rust-commons`: core runtime model, lifecycle, writer, and facade APIs.
 - `allure-reqwest`: `reqwest` integration for Allure HTTP Exchange attachments.
 - `allure-cargotest`: test integration helper and reporter for `cargo test`.
-- `allure-test-macros`: procedural macro crate that provides `#[allure_test]` and `#[step]`.
+- `allure-test-macros`: procedural macro crate that provides `#[allure_test]`, `#[step]`,
+  and `#[log_asserts]`.
 
 ## Basic installation
 
@@ -76,13 +77,19 @@ Implemented runtime facade APIs include:
 
 - **Test lifecycle**: `start_test_case`, `stop_test_case` (plus compatibility aliases `start_test`, `start_test_with_full_name`, `end_test`)
 - **Descriptions**: `description`, `description_html`
-- **Labels**: `label`, `labels`, `epic`, `feature`, `story`, `suite`, `parent_suite`,
-  `sub_suite`, `owner`, `severity`, `layer`, `tag`, `tags`, `id`
+- **Labels and identity**: `label`, `labels`, `epic`, `feature`, `story`, `suite`,
+  `parent_suite`, `sub_suite`, `owner`, `severity`, `layer`, `tag`, `tags`, `id`,
+  `allure_id`, `display_name`, `history_id`, `test_case_id`
 - **Links**: `link`, `links`, `issue`, `tms`
-- **Parameters**: `parameter`
-- **Attachments**: `attachment`
-- **HTTP exchanges**: `HttpExchange` in commons, plus `allure-reqwest` for `reqwest` clients
-- **Steps**: `step`, `log_step`, `#[step]` with automatic stop via `StepGuard`
+- **Parameters**: `parameter`, `parameter_excluded`, `parameter_mode`,
+  `parameter_with_options`
+- **Attachments**: `attachment`, `attachment_path`, `attach_trace`, and global diagnostics helpers
+- **HTTP exchanges**: `HttpExchange` in commons, plus `allure-reqwest` for `reqwest` clients.
+  Runtime helpers wrap exchanges as ordered evidence steps by default; exact-owner helpers live in
+  `allure_rust_commons::reporter` for reporter/adapter internals.
+- **Steps and stages**: `log_step`, `log_step_with`, `step`, `stage`, `#[step]`
+- **Assertion logging**: `assert!`, `assert_eq!`, and related standard assertion steps are logged
+  by default and can be disabled with `log_asserts` configuration
 
 ## Quick example
 
@@ -90,16 +97,17 @@ Implemented runtime facade APIs include:
 
 ```rust
 use allure_cargotest::{allure_test, step};
+use allure_rust_commons::{feature, log_step, parameter, stage};
 
 #[allure_test]
 #[test]
 fn test_with_allure() {
-    allure.epic("Web interface");
-    allure.feature("Authentication");
-    allure.story("Login by user/password");
-    allure.parameter("browser", "firefox");
+    feature("Authentication");
+    parameter("browser", "firefox");
 
+    stage("open login page");
     open_login_page();
+    log_step("login page opened");
 }
 
 #[step]
@@ -110,6 +118,21 @@ fn open_login_page() {
 
 The `#[allure_test]` attribute initializes a reporter automatically (using
 `ALLURE_RESULTS_DIR` or `target/allure-results`) and wraps the test lifecycle.
+
+For environments where attribute macros are not allowed, use the macro-free runtime from commons:
+
+```rust
+use allure_rust_commons as allure;
+
+#[test]
+fn test_with_allure_runtime() {
+    allure::test(|| {
+        allure::feature("Authentication");
+        allure::stage("open login page");
+        allure::log_step("open login page");
+    });
+}
+```
 
 Async tests can compose `#[allure_test]` with a runtime-specific test macro such as
 `#[tokio::test]`. Add and configure Tokio in your test crate; `allure-cargotest` does not depend
@@ -153,7 +176,12 @@ It exports these main building blocks:
   - `FileSystemResultsWriter`: writes result JSON and attachment files into an output directory.
 - **Facade (`facade`)**:
   - `AllureFacade`: ergonomic API for tests/framework adapters.
+  - Macro-free test runners such as `test`, `test_named`, and `test_with`.
+  - Thread-bound helpers such as `feature`, `parameter`, `log_step`, `attachment`, and `step`.
   - global `allure()` accessor backed by `OnceLock`.
+- **Config (`config`)**:
+  - `global_config()`: process-wide env/runtime settings loaded once.
+  - Cargo metadata config cached per manifest directory.
 
 This separation lets you choose either:
 
@@ -190,7 +218,9 @@ lifecycle.stop_test_case(Status::Passed, None);
 ```
 
 For convenience APIs, wrap the lifecycle in `AllureFacade::with_lifecycle(...)` and expose
-framework-specific helpers similar to `#[allure_test]` from `allure-cargotest`.
+framework-specific helpers similar to `#[allure_test]` from `allure-cargotest`. Adapters can also
+call `push_current_allure(&facade)` while a test runs so users can import thread-bound functions
+directly from `allure-rust-commons`.
 
 ## Why is there a separate `allure-test-macros` crate?
 
@@ -200,7 +230,7 @@ time, so runtime/reporter APIs stay in `allure-cargotest` and macro implementati
 lives in `allure-test-macros`.
 
 From a user perspective this remains a single entrypoint because
-`allure-cargotest` re-exports `#[allure_test]` and `#[step]`.
+`allure-cargotest` re-exports `#[allure_test]`, `#[step]`, and `#[log_asserts]`.
 
 
 ## Community

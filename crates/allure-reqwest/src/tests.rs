@@ -103,14 +103,11 @@ fn read_allure_result(out_dir: &Path, test_name: &str) -> (Value, Vec<Value>) {
     }
 
     let result = result.expect("expected test result should exist");
-    let attachments = result["attachments"]
-        .as_array()
-        .expect("attachments should be an array")
-        .iter()
-        .map(|attachment| {
-            let source = attachment["source"]
-                .as_str()
-                .expect("attachment source should be a string");
+    let mut attachment_sources = Vec::new();
+    collect_attachment_sources(&result, &mut attachment_sources);
+    let attachments = attachment_sources
+        .into_iter()
+        .map(|source| {
             serde_json::from_str::<Value>(
                 &fs::read_to_string(out_dir.join(source)).expect("attachment should be readable"),
             )
@@ -121,6 +118,23 @@ fn read_allure_result(out_dir: &Path, test_name: &str) -> (Value, Vec<Value>) {
     (result, attachments)
 }
 
+fn collect_attachment_sources(value: &Value, sources: &mut Vec<String>) {
+    if let Some(attachments) = value["attachments"].as_array() {
+        for attachment in attachments {
+            let source = attachment["source"]
+                .as_str()
+                .expect("attachment source should be a string");
+            sources.push(source.to_string());
+        }
+    }
+
+    if let Some(steps) = value["steps"].as_array() {
+        for step in steps {
+            collect_attachment_sources(step, sources);
+        }
+    }
+}
+
 fn assert_reported_to_allure(result: &Value, test_name: &str) {
     assert_eq!(result["name"], test_name);
     assert_eq!(result["status"], "passed");
@@ -128,6 +142,20 @@ fn assert_reported_to_allure(result: &Value, test_name: &str) {
     assert!(contains_label(result, "language", "rust"));
     assert!(contains_label(result, "framework", "cargo-test"));
     assert_eq!(result["titlePath"], serde_json::json!(["src", "tests.rs"]));
+}
+
+fn assert_wrapped_attachment(result: &Value, name: &str) {
+    assert!(result["attachments"]
+        .as_array()
+        .expect("root attachments should be an array")
+        .is_empty());
+    assert_eq!(result["steps"][0]["name"], name);
+    assert_eq!(result["steps"][0]["status"], "passed");
+    assert_eq!(result["steps"][0]["attachments"][0]["name"], name);
+    assert!(result["steps"][0]["attachments"][0]["source"]
+        .as_str()
+        .expect("attachment source should be a string")
+        .ends_with(".httpexchange"));
 }
 
 fn contains_label(result: &Value, name: &str, value: &str) -> bool {
@@ -321,11 +349,7 @@ fn captures_request_response_metadata_and_request_body() {
     assert_eq!(received.header("authorization"), Some("Bearer secret"));
     assert_eq!(received.header("content-type"), Some("application/json"));
     assert_eq!(received.body, r#"{"name":"demo"}"#);
-    assert_eq!(result["attachments"][0]["name"], "HTTP Exchange");
-    assert!(result["attachments"][0]["source"]
-        .as_str()
-        .expect("attachment source should be a string")
-        .ends_with(".httpexchange"));
+    assert_wrapped_attachment(&result, "HTTP Exchange");
     let attachment = attachments
         .first()
         .expect("http exchange attachment should exist");
@@ -388,7 +412,7 @@ fn captures_response_body_when_enabled_and_preserves_body_for_caller() {
     assert_eq!(received.method, "GET");
     assert_eq!(received.path, "/v1/orders/42");
     assert_eq!(received.body, "");
-    assert_eq!(result["attachments"][0]["name"], "Create order");
+    assert_wrapped_attachment(&result, "Create order");
     let attachment = attachments
         .first()
         .expect("http exchange attachment should exist");
