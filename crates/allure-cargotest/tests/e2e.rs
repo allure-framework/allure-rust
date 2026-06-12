@@ -41,9 +41,12 @@ impl Drop for TempProjectDir {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_descriptions_sample() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies the description sample emits markdown and HTML descriptions in the Allure result.",
+        );
         let (results, _, _project_dir) = run_sample("descriptions", true);
         let result = results
             .get("writes_descriptions")
@@ -63,9 +66,12 @@ fn generates_allure_results_for_descriptions_sample() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_labels_sample() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies the labels sample emits custom, hierarchy, owner, severity, tag, id, and link metadata.",
+        );
         let (results, _, _project_dir) = run_sample("labels", true);
         let result = results
             .get("writes_all_labels")
@@ -95,9 +101,12 @@ fn generates_allure_results_for_labels_sample() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_synthetic_suite_labels_when_not_overridden() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies synthetic suite labels are generated when the sample does not override them.",
+        );
         let (results, _, _project_dir) = run_sample("labels", true);
         let result = results
             .get("derives_synthetic_suite_labels_by_default")
@@ -113,9 +122,12 @@ fn generates_synthetic_suite_labels_when_not_overridden() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_links_sample() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies the links sample emits custom, issue, and TMS links in order.",
+        );
         let (results, _, _project_dir) = run_sample("links", true);
         let result = results
             .get("writes_links")
@@ -133,9 +145,12 @@ fn generates_allure_results_for_links_sample() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_parameters_sample() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies the parameters sample emits runtime parameters with expected names and values.",
+        );
         let (results, _, _project_dir) = run_sample("parameters", true);
         let result = results
             .get("writes_parameters")
@@ -152,9 +167,12 @@ fn generates_allure_results_for_parameters_sample() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_attachments_sample() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies the attachments sample writes attachment metadata and file content.",
+        );
         let (results, results_dir, _project_dir) = run_sample("attachments", true);
         let result = results
             .get("writes_attachment")
@@ -175,9 +193,12 @@ fn generates_allure_results_for_attachments_sample() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_from_commons_runtime_functions() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies cargotest preserves steps, parameters, labels, and attachments from commons runtime functions.",
+        );
         let (results, results_dir, _project_dir) = run_sample("functions", true);
         let result = results
             .get("uses_commons_runtime_functions")
@@ -187,8 +208,8 @@ fn generates_allure_results_from_commons_runtime_functions() {
         assert_eq!(json_string(result, "status"), Some("passed"));
         assert!(contains_label(result, "feature", "Runtime functions"));
         assert!(result.contains(
-                "\"parameters\":[{\"name\":\"source\",\"value\":\"commons\",\"excluded\":null,\"mode\":null}]"
-            ));
+            "\"parameters\":[{\"name\":\"source\",\"value\":\"commons\",\"excluded\":null,\"mode\":null}]"
+        ));
         assert!(
             result.contains("{\"uuid\":null,\"name\":\"log from commons\",\"status\":\"passed\"")
         );
@@ -209,9 +230,12 @@ fn generates_allure_results_from_commons_runtime_functions() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_from_commons_test_runtime() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies manual commons test runtime output is discovered and written without macro metadata.",
+        );
         let (results, results_dir, _project_dir) = run_sample_without_title_path("runtime", true);
         let result = results
             .get("uses_commons_test_runtime")
@@ -223,8 +247,8 @@ fn generates_allure_results_from_commons_test_runtime() {
             .is_some_and(|full_name| full_name.ends_with("uses_commons_test_runtime")));
         assert!(contains_label(result, "feature", "Manual runtime"));
         assert!(result.contains(
-                "\"parameters\":[{\"name\":\"style\",\"value\":\"no-macro\",\"excluded\":null,\"mode\":null}]"
-            ));
+            "\"parameters\":[{\"name\":\"style\",\"value\":\"no-macro\",\"excluded\":null,\"mode\":null}]"
+        ));
         assert!(result
             .contains("{\"uuid\":null,\"name\":\"log from manual runtime\",\"status\":\"passed\""));
         assert!(result.contains(
@@ -246,9 +270,12 @@ fn generates_allure_results_from_commons_test_runtime() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_steps_sample() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies the steps sample preserves passed, failed, broken, nested, and attached step evidence.",
+        );
         let (results, results_dir, _project_dir) = run_sample("steps", true);
         let result = results
             .get("writes_steps")
@@ -286,9 +313,12 @@ fn generates_allure_results_for_steps_sample() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_tokio_async_tests() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies async Tokio tests preserve metadata, awaited steps, and attachments across runtime flavors.",
+        );
         let (results, results_dir, _project_dir) = run_sample("tokio_async", true);
 
         let current_thread = results
@@ -339,9 +369,12 @@ fn generates_allure_results_for_tokio_async_tests() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_failing_tests() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies failing sample tests still emit both passed and failed Allure results.",
+        );
         let (results, _, _project_dir) = run_sample("failing", false);
 
         let passing = results
@@ -363,9 +396,12 @@ fn generates_allure_results_for_failing_tests() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_assertion_steps_by_default() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies assertion logging is enabled by default and records passing and failing assertion details.",
+        );
         let (results, _, _project_dir) = run_sample("assertions", false);
 
         let passing = results
@@ -392,9 +428,12 @@ fn generates_assertion_steps_by_default() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn disables_assertion_steps_with_environment_override() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies the ALLURE_LOG_ASSERTS environment override suppresses assertion step logging.",
+        );
         let mut envs = HashMap::new();
         envs.insert("ALLURE_LOG_ASSERTS", "false");
         let (results, _, _project_dir) = run_sample_with_env("assertions", false, &envs);
@@ -420,9 +459,12 @@ fn disables_assertion_steps_with_environment_override() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_should_panic_tests() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies should-panic tests map matching, mismatching, and missing panics to the correct Allure status.",
+        );
         let (results, _, _project_dir) = run_sample("should_panic", false);
 
         let should_panic_without_expected_passes = results
@@ -472,9 +514,12 @@ fn generates_allure_results_for_should_panic_tests() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_results_for_tokio_async_should_panic_tests() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies async should-panic tests preserve panic status semantics under Tokio.",
+        );
         let (results, _, _project_dir) = run_sample("tokio_async_should_panic", false);
 
         let without_expected = results
@@ -511,9 +556,12 @@ fn generates_allure_results_for_tokio_async_should_panic_tests() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_default_runtime_labels() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies default runtime labels and package metadata labels are emitted for sample tests.",
+        );
         let (results, _, _project_dir) = run_sample("default_and_global_labels", true);
         let result = results
             .get("writes_default_and_global_labels")
@@ -540,9 +588,12 @@ fn generates_default_runtime_labels() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_global_labels_and_runtime_overrides() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies environment-provided global labels override host, thread, component, and layer metadata.",
+        );
         let mut envs = HashMap::new();
         envs.insert("ALLURE_LABEL_component", "checkout");
         envs.insert("allure.label.layer", "e2e");
@@ -566,9 +617,12 @@ fn generates_global_labels_and_runtime_overrides() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn selective_run_when_test_selected_by_name() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies test-plan selection by exact full name runs the selected sample test.",
+        );
         let testplan = r#"{"version":"1.0","tests":[{"selector":"allure::selected_by_name"}]}"#;
         let (results, _, _project_dir) =
             run_sample_with_testplan("selective", Some(testplan), true);
@@ -579,9 +633,12 @@ fn selective_run_when_test_selected_by_name() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn selective_run_does_not_match_partial_selector_name() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies partial selector names do not accidentally select sample tests.",
+        );
         let testplan = r#"{"version":"1.0","tests":[{"selector":"selected_by_name"}]}"#;
         let (results, _, _project_dir) =
             run_sample_with_testplan("selective", Some(testplan), true);
@@ -591,9 +648,10 @@ fn selective_run_does_not_match_partial_selector_name() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_allure_id_label_from_macro_attribute() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description("Verifies macro-provided Allure ids are emitted as result labels.");
         let (results, _, _project_dir) = run_sample("selective", true);
 
         let result = results
@@ -604,9 +662,12 @@ fn generates_allure_id_label_from_macro_attribute() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn selective_run_when_multiple_tests_selected() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies a test plan with multiple entries still emits only runnable selected sample tests.",
+        );
         let testplan =
             r#"{"version":"1.0","tests":[{"selector":"allure::selected_by_name"},{"id":"A-2"}]}"#;
         let (results, _, _project_dir) =
@@ -618,9 +679,12 @@ fn selective_run_when_multiple_tests_selected() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn selective_run_when_no_tests_selected() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies a test plan with no matching entries produces no sample Allure results.",
+        );
         let testplan = r#"{"version":"1.0","tests":[{"selector":"missing::test"}]}"#;
         let (results, _, _project_dir) =
             run_sample_with_testplan("selective", Some(testplan), true);
@@ -630,9 +694,12 @@ fn selective_run_when_no_tests_selected() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn selective_run_with_malformed_testplan() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies malformed test plans fall back to running the full sample suite.",
+        );
         let (results, _, _project_dir) =
             run_sample_with_testplan("selective", Some("not json"), true);
 
@@ -644,9 +711,12 @@ fn selective_run_with_malformed_testplan() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn selective_run_with_missing_testplan_file_and_env_var() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies a missing test-plan file falls back to running the full sample suite.",
+        );
         let mut envs = HashMap::new();
         envs.insert(
             "ALLURE_TESTPLAN_PATH",
@@ -663,9 +733,12 @@ fn selective_run_with_missing_testplan_file_and_env_var() {
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn keeps_metadata_linked_to_the_right_test_when_running_concurrently() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies concurrent sample tests keep labels, parameters, and links isolated per test.",
+        );
         let mut envs = HashMap::new();
         envs.insert("RUST_TEST_THREADS", "2");
 
@@ -713,6 +786,7 @@ fn run_sample_with_testplan(
     if let Some(content) = testplan_content {
         let path = project_dir.path().join("testplan.json");
         fs::write(&path, content).expect("test plan should be written");
+        attach_testplan_input(sample_name, content);
         plan_path = Some(path);
     }
 
@@ -724,6 +798,7 @@ fn run_sample_with_testplan(
     }
 
     let output = run_cargo_test(project_dir.path(), &results_dir, &envs);
+    attach_command_output(sample_name, &output);
     if expect_success {
         assert!(
             output.status.success(),
@@ -738,15 +813,19 @@ fn run_sample_with_testplan(
     }
 
     let results = read_results_by_test_name_allow_empty(&results_dir);
+    attach_result_summary(sample_name, &results, &results_dir);
     assert_results_title_path(&results, &["tests", "allure.rs"]);
 
     (results, results_dir, project_dir)
 }
 
 #[test]
+#[allure_cargotest::log_asserts]
 fn generates_test_case_id_and_runtime_override() {
     allure::test(|| {
-        allure::stage("execute test body");
+        allure::description(
+            "Verifies generated testCaseId values are stable and can be overridden at runtime.",
+        );
         let (results, _, _project_dir) = run_sample("identifiers", true);
 
         let generated = results
@@ -820,6 +899,7 @@ fn run_sample_with_env_and_title_path(
     let results_dir = project_dir.path().join("allure-results");
 
     let output = run_cargo_test(project_dir.path(), &results_dir, envs);
+    attach_command_output(sample_name, &output);
     if expect_success {
         assert!(
             output.status.success(),
@@ -840,6 +920,7 @@ fn run_sample_with_env_and_title_path(
         String::from_utf8_lossy(&output.stderr)
     );
     let results = read_results_by_test_name_allow_empty(&results_dir);
+    attach_result_summary(sample_name, &results, &results_dir);
     if let Some(expected_title_path) = expected_title_path {
         assert_results_title_path(&results, expected_title_path);
     }
@@ -975,6 +1056,82 @@ fn run_cargo_test(
     }
 
     command.output().expect("cargo test should run")
+}
+
+fn attach_testplan_input(sample_name: &str, content: &str) {
+    allure::attachment(
+        format!("{sample_name} testplan input"),
+        "text/plain",
+        content.as_bytes(),
+    );
+}
+
+fn attach_command_output(sample_name: &str, output: &std::process::Output) {
+    let status = format!(
+        "status: {}\ncode: {:?}\nsuccess: {}\n",
+        output.status,
+        output.status.code(),
+        output.status.success()
+    );
+    allure::attachment(
+        format!("{sample_name} cargo test status"),
+        "text/plain",
+        status.as_bytes(),
+    );
+
+    if !output.stdout.is_empty() {
+        allure::attachment(
+            format!("{sample_name} cargo test stdout"),
+            "text/plain",
+            &output.stdout,
+        );
+    }
+
+    if !output.stderr.is_empty() {
+        allure::attachment(
+            format!("{sample_name} cargo test stderr"),
+            "text/plain",
+            &output.stderr,
+        );
+    }
+}
+
+fn attach_result_summary(sample_name: &str, results: &HashMap<String, String>, results_dir: &Path) {
+    let mut test_names = results.keys().collect::<Vec<_>>();
+    test_names.sort();
+
+    let mut summary = format!(
+        "sample: {sample_name}\nresults_dir: {}\nresult_count: {}\n",
+        results_dir.display(),
+        test_names.len()
+    );
+    if test_names.is_empty() {
+        summary.push_str("tests: <none>\n");
+    } else {
+        summary.push_str("tests:\n");
+        for name in &test_names {
+            summary.push_str("- ");
+            summary.push_str(name);
+            summary.push('\n');
+        }
+    }
+
+    allure::attachment(
+        format!("{sample_name} allure result summary"),
+        "text/plain",
+        summary.as_bytes(),
+    );
+
+    for name in test_names {
+        let raw = results
+            .get(name.as_str())
+            .expect("result summary keys should match result map");
+        allure::attachment(
+            format!("{sample_name} result {name}.json"),
+            "application/json",
+            raw.as_bytes(),
+        );
+    }
 }
 
 fn read_results_by_test_name_allow_empty(results_dir: &Path) -> HashMap<String, String> {

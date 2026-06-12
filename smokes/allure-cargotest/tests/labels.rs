@@ -3,6 +3,8 @@ use allure_cargotest::allure_test;
 #[allure_test]
 #[test]
 fn writes_all_labels() {
+    allure.description("Verifies every supported label and link helper records the expected Allure metadata.");
+    allure.log_step("record explicit label taxonomy");
     allure.label("custom", "v1");
     allure.labels([("team", "qa"), ("component", "billing")]);
     allure.epic("checkout");
@@ -15,6 +17,7 @@ fn writes_all_labels() {
     allure.severity("critical");
     allure.layer("e2e");
     allure.tags(["smoke", "regression"]);
+    allure.log_step("record wiki and issue links");
     allure.links([
         ("https://example.test/wiki", Some("wiki"), Some("custom")),
         (
@@ -29,5 +32,6 @@ fn writes_all_labels() {
 #[allure_test]
 #[test]
 fn derives_synthetic_suite_labels_by_default() {
+    allure.description("Verifies suite metadata is derived from the Rust module path when no suite is set explicitly.");
     allure.log_step("synthetic suites are added from module path");
 }

@@ -56,6 +56,7 @@ mod tests {
         allure_test(
             module_path!(),
             "detects_assertion_messages_as_failed",
+            "Verifies assertion-style panic messages are classified as failed test assertions.",
             || {
                 assert!(matches!(
                     get_status_from_error("assert_eq! left != right"),
@@ -74,6 +75,7 @@ mod tests {
         allure_test(
             module_path!(),
             "classifies_non_assertion_messages_as_broken",
+            "Verifies non-assertion panic messages are classified as broken test errors.",
             || {
                 assert!(matches!(
                     get_status_from_error("panic without string payload"),

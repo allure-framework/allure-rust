@@ -1,6 +1,9 @@
 use super::*;
 use allure_cargotest::{allure_test, CargoTestReporter};
-use allure_rust_commons::{apply_config_labels, title_path, AllureFacade};
+use allure_rust_commons::{
+    apply_config_labels, attachment as allure_attachment, description as allure_description,
+    step as allure_step, title_path, AllureFacade, HTTP_EXCHANGE_ATTACHMENT_MIME,
+};
 use serde_json::Value;
 use std::{
     fs,
@@ -158,6 +161,45 @@ fn assert_wrapped_attachment(result: &Value, name: &str) {
         .ends_with(".httpexchange"));
 }
 
+fn attach_json_evidence(name: &str, content_type: &str, value: &Value) {
+    let body = serde_json::to_vec_pretty(value).expect("evidence json should serialize");
+    allure_attachment(name, content_type, body);
+}
+
+fn attach_http_exchange_evidence(name: &str, exchange: &Value) {
+    attach_json_evidence(name, HTTP_EXCHANGE_ATTACHMENT_MIME, exchange);
+}
+
+fn attach_received_request_evidence(request: &ReceivedRequest) {
+    let headers = request
+        .headers
+        .iter()
+        .map(|(name, value)| {
+            let value = if name.eq_ignore_ascii_case("authorization") {
+                HTTP_EXCHANGE_REDACTED_VALUE
+            } else {
+                value
+            };
+            serde_json::json!({
+                "name": name,
+                "value": value,
+            })
+        })
+        .collect::<Vec<_>>();
+    let payload = serde_json::json!({
+        "method": request.method.as_str(),
+        "path": request.path.replace("token=secret", "token=__ALLURE_REDACTED__"),
+        "headers": headers,
+        "body": request.body.as_str(),
+    });
+
+    attach_json_evidence(
+        "request observed by local server",
+        "application/json",
+        &payload,
+    );
+}
+
 fn contains_label(result: &Value, name: &str, value: &str) -> bool {
     result["labels"]
         .as_array()
@@ -313,148 +355,220 @@ fn find_header_end(bytes: &[u8]) -> Option<usize> {
 #[allure_test]
 #[test]
 fn captures_request_response_metadata_and_request_body() {
-    let server = TestServer::spawn(
-        "201 Created",
-        &[("content-type", "application/json"), ("x-trace", "abc")],
-        r#"{"id":42}"#,
+    allure_description(
+        "Verifies that the reqwest client captures request metadata, redacts sensitive query/header values, records the request body, and preserves response status metadata without response body capture.",
     );
+    let server = allure_step("start local server returning 201 JSON response", || {
+        TestServer::spawn(
+            "201 Created",
+            &[("content-type", "application/json"), ("x-trace", "abc")],
+            r#"{"id":42}"#,
+        )
+    });
     let url = server.url().to_string();
-    let (result, attachments) = run_async_within_test_context(
-        "captures_request_response_metadata_and_request_body",
-        |allure| async move {
-            let client = AllureReqwestClient::new(allure);
+    let (result, attachments) = allure_step(
+        "send redacted POST through AllureReqwestClient",
+        || {
+            run_async_within_test_context(
+                "captures_request_response_metadata_and_request_body",
+                |allure| async move {
+                    allure.description(
+                        "Captures a POST request with redacted token and authorization values plus request body and response status metadata.",
+                    );
+                    let client = AllureReqwestClient::new(allure);
 
-            let response = client
-                .send(
-                    client
-                        .post(format!("{url}/v1/orders?dryRun=true&token=secret"))
-                        .header("authorization", "Bearer secret")
-                        .header("content-type", "application/json")
-                        .body(r#"{"name":"demo"}"#),
-                )
-                .await
-                .expect("request should succeed");
+                    let response = client
+                        .send(
+                            client
+                                .post(format!("{url}/v1/orders?dryRun=true&token=secret"))
+                                .header("authorization", "Bearer secret")
+                                .header("content-type", "application/json")
+                                .body(r#"{"name":"demo"}"#),
+                        )
+                        .await
+                        .expect("request should succeed");
 
-            assert_eq!(response.status(), 201);
+                    assert_eq!(response.status(), 201);
+                },
+            )
         },
     );
-    let received = server.received_request();
+    let received = allure_step("collect request observed by local server", || {
+        server.received_request()
+    });
 
-    assert_reported_to_allure(
-        &result,
-        "captures_request_response_metadata_and_request_body",
+    allure_step(
+        "verify request metadata and redacted HTTP exchange evidence",
+        || {
+            assert_reported_to_allure(
+                &result,
+                "captures_request_response_metadata_and_request_body",
+            );
+            attach_received_request_evidence(&received);
+            assert_eq!(received.method, "POST");
+            assert_eq!(received.path, "/v1/orders?dryRun=true&token=secret");
+            assert_eq!(received.header("authorization"), Some("Bearer secret"));
+            assert_eq!(received.header("content-type"), Some("application/json"));
+            assert_eq!(received.body, r#"{"name":"demo"}"#);
+            assert_wrapped_attachment(&result, "HTTP Exchange");
+            let attachment = attachments
+                .first()
+                .expect("http exchange attachment should exist");
+            attach_http_exchange_evidence("captured redacted HTTP exchange", attachment);
+            assert_eq!(attachment["schemaVersion"], 1);
+            assert_eq!(attachment["request"]["method"], "POST");
+            assert_eq!(attachment["request"]["query"][0]["name"], "dryRun");
+            assert_eq!(attachment["request"]["query"][0]["value"], "true");
+            assert_eq!(attachment["request"]["query"][1]["name"], "token");
+            assert_eq!(
+                attachment["request"]["query"][1]["value"],
+                HTTP_EXCHANGE_REDACTED_VALUE
+            );
+            assert_eq!(
+                attachment["request"]["headers"][0]["value"],
+                HTTP_EXCHANGE_REDACTED_VALUE
+            );
+            assert_eq!(attachment["request"]["body"]["encoding"], "utf8");
+            assert_eq!(attachment["request"]["body"]["value"], r#"{"name":"demo"}"#);
+            assert_eq!(attachment["response"]["status"], 201);
+            assert_eq!(attachment["response"]["statusText"], "Created");
+            assert!(attachment["response"].get("body").is_none());
+        },
     );
-    assert_eq!(received.method, "POST");
-    assert_eq!(received.path, "/v1/orders?dryRun=true&token=secret");
-    assert_eq!(received.header("authorization"), Some("Bearer secret"));
-    assert_eq!(received.header("content-type"), Some("application/json"));
-    assert_eq!(received.body, r#"{"name":"demo"}"#);
-    assert_wrapped_attachment(&result, "HTTP Exchange");
-    let attachment = attachments
-        .first()
-        .expect("http exchange attachment should exist");
-    assert_eq!(attachment["schemaVersion"], 1);
-    assert_eq!(attachment["request"]["method"], "POST");
-    assert_eq!(attachment["request"]["query"][0]["name"], "dryRun");
-    assert_eq!(attachment["request"]["query"][0]["value"], "true");
-    assert_eq!(attachment["request"]["query"][1]["name"], "token");
-    assert_eq!(
-        attachment["request"]["query"][1]["value"],
-        HTTP_EXCHANGE_REDACTED_VALUE
-    );
-    assert_eq!(
-        attachment["request"]["headers"][0]["value"],
-        HTTP_EXCHANGE_REDACTED_VALUE
-    );
-    assert_eq!(attachment["request"]["body"]["encoding"], "utf8");
-    assert_eq!(attachment["request"]["body"]["value"], r#"{"name":"demo"}"#);
-    assert_eq!(attachment["response"]["status"], 201);
-    assert_eq!(attachment["response"]["statusText"], "Created");
-    assert!(attachment["response"].get("body").is_none());
 }
 
 #[allure_test]
 #[test]
 fn captures_response_body_when_enabled_and_preserves_body_for_caller() {
-    let server = TestServer::spawn(
-        "200 OK",
-        &[("content-type", "application/json")],
-        r#"{"ok":true}"#,
+    allure_description(
+        "Verifies that opt-in response body capture records JSON response content while leaving the caller able to read the body.",
     );
+    let server = allure_step("start local server returning 200 JSON response", || {
+        TestServer::spawn(
+            "200 OK",
+            &[("content-type", "application/json")],
+            r#"{"ok":true}"#,
+        )
+    });
     let url = server.url().to_string();
-    let (result, attachments) = run_async_within_test_context(
-        "captures_response_body_when_enabled_and_preserves_body_for_caller",
-        |allure| async move {
-            let client = AllureReqwestClient::new(allure).with_options(
-                CaptureOptions::default()
-                    .with_attachment_name("Create order")
-                    .with_response_body_capture(1024),
+    let (result, attachments) = allure_step("send GET with response body capture enabled", || {
+        run_async_within_test_context(
+            "captures_response_body_when_enabled_and_preserves_body_for_caller",
+            |allure| async move {
+                allure.description(
+                        "Captures the response body in the HTTP exchange and still returns a readable reqwest response body to the caller.",
+                    );
+                let client = AllureReqwestClient::new(allure).with_options(
+                    CaptureOptions::default()
+                        .with_attachment_name("Create order")
+                        .with_response_body_capture(1024),
+                );
+
+                let response = client
+                    .send(client.get(format!("{url}/v1/orders/42")))
+                    .await
+                    .expect("request should succeed");
+                let body = response
+                    .text()
+                    .await
+                    .expect("response body should be readable");
+
+                assert_eq!(body, r#"{"ok":true}"#);
+            },
+        )
+    });
+    let received = allure_step("collect request observed by local server", || {
+        server.received_request()
+    });
+
+    allure_step(
+        "verify response body capture and caller-visible body",
+        || {
+            assert_reported_to_allure(
+                &result,
+                "captures_response_body_when_enabled_and_preserves_body_for_caller",
             );
-
-            let response = client
-                .send(client.get(format!("{url}/v1/orders/42")))
-                .await
-                .expect("request should succeed");
-            let body = response
-                .text()
-                .await
-                .expect("response body should be readable");
-
-            assert_eq!(body, r#"{"ok":true}"#);
+            attach_received_request_evidence(&received);
+            assert_eq!(received.method, "GET");
+            assert_eq!(received.path, "/v1/orders/42");
+            assert_eq!(received.body, "");
+            assert_wrapped_attachment(&result, "Create order");
+            let attachment = attachments
+                .first()
+                .expect("http exchange attachment should exist");
+            attach_http_exchange_evidence("captured response body exchange", attachment);
+            assert_eq!(
+                attachment["response"]["body"]["contentType"],
+                "application/json"
+            );
+            assert_eq!(attachment["response"]["body"]["encoding"], "utf8");
+            assert_eq!(attachment["response"]["body"]["value"], r#"{"ok":true}"#);
         },
     );
-    let received = server.received_request();
-
-    assert_reported_to_allure(
-        &result,
-        "captures_response_body_when_enabled_and_preserves_body_for_caller",
-    );
-    assert_eq!(received.method, "GET");
-    assert_eq!(received.path, "/v1/orders/42");
-    assert_eq!(received.body, "");
-    assert_wrapped_attachment(&result, "Create order");
-    let attachment = attachments
-        .first()
-        .expect("http exchange attachment should exist");
-    assert_eq!(
-        attachment["response"]["body"]["contentType"],
-        "application/json"
-    );
-    assert_eq!(attachment["response"]["body"]["encoding"], "utf8");
-    assert_eq!(attachment["response"]["body"]["value"], r#"{"ok":true}"#);
 }
 
 #[allure_test]
 #[test]
 fn body_capture_truncates_and_base64_encodes_binary() {
-    let (result, attachments) =
-        run_within_test_context("body_capture_truncates_and_base64_encodes_binary", |_| {
-            let body = body_from_bytes(&[0, 159, 146, 150, 255], Some("image/png".to_string()), 3);
+    allure_description(
+        "Verifies that binary body capture uses base64, records original size, and marks payloads truncated when the configured byte limit is exceeded.",
+    );
+    let (result, attachments) = allure_step(
+        "encode binary body with a three-byte capture limit",
+        || {
+            run_within_test_context(
+                "body_capture_truncates_and_base64_encodes_binary",
+                |allure| {
+                    allure.description(
+                "Encodes a binary body as base64 and marks it truncated when only the first three bytes are captured.",
+            );
+                    let body =
+                        body_from_bytes(&[0, 159, 146, 150, 255], Some("image/png".to_string()), 3);
 
-            assert_eq!(body.content_type.as_deref(), Some("image/png"));
-            assert!(matches!(
-                body.encoding,
-                Some(HttpExchangeBodyEncoding::Base64)
-            ));
-            assert_eq!(body.value.as_deref(), Some("AJ+S"));
-            assert_eq!(body.size, Some(5));
-            assert_eq!(body.truncated, Some(true));
-        });
+                    assert_eq!(body.content_type.as_deref(), Some("image/png"));
+                    assert!(matches!(
+                        body.encoding,
+                        Some(HttpExchangeBodyEncoding::Base64)
+                    ));
+                    assert_eq!(body.value.as_deref(), Some("AJ+S"));
+                    assert_eq!(body.size, Some(5));
+                    assert_eq!(body.truncated, Some(true));
+                },
+            )
+        },
+    );
 
-    assert_reported_to_allure(&result, "body_capture_truncates_and_base64_encodes_binary");
-    assert!(attachments.is_empty());
+    allure_step(
+        "verify encoded binary body metadata and absence of HTTP attachments",
+        || {
+            assert_reported_to_allure(&result, "body_capture_truncates_and_base64_encodes_binary");
+            assert!(attachments.is_empty());
+        },
+    );
 }
 
 #[cfg(feature = "middleware")]
 #[allure_test]
 #[test]
 fn middleware_can_be_constructed() {
-    let (result, attachments) =
-        run_within_test_context("middleware_can_be_constructed", |allure| {
-            let _middleware = AllureReqwestMiddleware::new(allure)
-                .with_options(CaptureOptions::default().with_attachment_name("HTTP"));
-        });
+    allure_description(
+        "Verifies that the optional reqwest-middleware integration can be constructed with custom capture options.",
+    );
+    let (result, attachments) = allure_step(
+        "construct middleware with custom attachment name",
+        || {
+            run_within_test_context("middleware_can_be_constructed", |allure| {
+                allure.description(
+                "Constructs the middleware adapter and applies a custom HTTP exchange attachment name.",
+            );
+                let _middleware = AllureReqwestMiddleware::new(allure)
+                    .with_options(CaptureOptions::default().with_attachment_name("HTTP"));
+            })
+        },
+    );
 
-    assert_reported_to_allure(&result, "middleware_can_be_constructed");
-    assert!(attachments.is_empty());
+    allure_step("verify middleware construction result metadata", || {
+        assert_reported_to_allure(&result, "middleware_can_be_constructed");
+        assert!(attachments.is_empty());
+    });
 }

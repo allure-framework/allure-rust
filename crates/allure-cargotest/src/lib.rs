@@ -5,6 +5,8 @@
 
 #![deny(missing_docs)]
 
+extern crate self as allure_cargotest;
+
 pub use allure_rust_commons::{Status, StatusDetails};
 /// Attribute procedural macros must live in a `proc-macro` crate.
 ///
