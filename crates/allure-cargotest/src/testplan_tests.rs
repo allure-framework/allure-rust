@@ -68,157 +68,148 @@ fn load_test_plan_from_env(case_name: &str) -> Option<TestPlan> {
     result
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn returns_none_when_env_is_unset() {
-    allure::test(|| {
-        allure::description(
-            "Verifies the adapter treats a missing ALLURE_TESTPLAN_PATH as no active test plan.",
-        );
-        let _guard = lock_testplan_env();
-        with_env_var_disabled();
-        assert!(load_test_plan_from_env("missing env var").is_none());
-    });
+    allure::description(
+        "Verifies the adapter treats a missing ALLURE_TESTPLAN_PATH as no active test plan.",
+    );
+    let _guard = lock_testplan_env();
+    with_env_var_disabled();
+    assert!(load_test_plan_from_env("missing env var").is_none());
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn returns_none_when_file_does_not_exist() {
-    allure::test(|| {
-        allure::description(
-            "Verifies a configured but missing test-plan file disables selection instead of failing the run.",
-        );
-        let _guard = lock_testplan_env();
-        with_env_var(std::path::Path::new(
-            "/tmp/this-file-should-not-exist-testplan.json",
-        ));
-        assert!(load_test_plan_from_env("missing test-plan file").is_none());
-    });
+    allure::description(
+        "Verifies a configured but missing test-plan file disables selection instead of failing the run.",
+    );
+    let _guard = lock_testplan_env();
+    with_env_var(std::path::Path::new(
+        "/tmp/this-file-should-not-exist-testplan.json",
+    ));
+    assert!(load_test_plan_from_env("missing test-plan file").is_none());
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn parses_plan_when_file_exists() {
-    allure::test(|| {
-        allure::description(
-            "Verifies a valid test-plan file is loaded from the environment and preserves entries.",
-        );
-        let _guard = lock_testplan_env();
-        let path = temp_file_path();
-        let input = r#"{"version":"1.0","tests":[{"id":"42"},{"selector":"suite::test_name"}]}"#;
-        attach_testplan_input("valid env file", input);
-        fs::write(&path, input).expect("write plan");
+    allure::description(
+        "Verifies a valid test-plan file is loaded from the environment and preserves entries.",
+    );
+    let _guard = lock_testplan_env();
+    let path = temp_file_path();
+    let input = r#"{"version":"1.0","tests":[{"id":"42"},{"selector":"suite::test_name"}]}"#;
+    attach_testplan_input("valid env file", input);
+    fs::write(&path, input).expect("write plan");
 
-        with_env_var(&path);
-        let plan = load_test_plan_from_env("valid env file").expect("plan parsed");
+    with_env_var(&path);
+    let plan = load_test_plan_from_env("valid env file").expect("plan parsed");
 
-        assert_eq!(plan.version.as_deref(), Some("1.0"));
-        assert_eq!(plan.tests.len(), 2);
+    assert_eq!(plan.version.as_deref(), Some("1.0"));
+    assert_eq!(plan.tests.len(), 2);
 
-        let _ = fs::remove_file(path);
-    });
+    let _ = fs::remove_file(path);
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn returns_none_for_malformed_json() {
-    allure::test(|| {
-        allure::description(
-            "Verifies malformed test-plan JSON is ignored as unavailable selection data.",
-        );
-        let _guard = lock_testplan_env();
-        let path = temp_file_path();
-        let input = "not json";
-        attach_testplan_input("malformed env file", input);
-        fs::write(&path, input).expect("write invalid plan");
+    allure::description(
+        "Verifies malformed test-plan JSON is ignored as unavailable selection data.",
+    );
+    let _guard = lock_testplan_env();
+    let path = temp_file_path();
+    let input = "not json";
+    attach_testplan_input("malformed env file", input);
+    fs::write(&path, input).expect("write invalid plan");
 
-        with_env_var(&path);
-        assert!(load_test_plan_from_env("malformed env file").is_none());
+    with_env_var(&path);
+    assert!(load_test_plan_from_env("malformed env file").is_none());
 
-        let _ = fs::remove_file(path);
-    });
+    let _ = fs::remove_file(path);
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn treats_empty_tests_as_unavailable() {
-    allure::test(|| {
-        allure::description("Verifies test plans without entries are treated as unavailable.");
-        let plan = parse_test_plan_input("empty test list", r#"{"version":"1","tests":[]}"#);
-        assert!(plan.is_none());
-    });
+    allure::description("Verifies test plans without entries are treated as unavailable.");
+    let plan = parse_test_plan_input("empty test list", r#"{"version":"1","tests":[]}"#);
+    assert!(plan.is_none());
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn matches_by_exact_full_name_only() {
-    allure::test(|| {
-        allure::description("Verifies selector matching requires the exact full test name.");
-        let plan = parse_test_plan_input(
-            "exact selector",
-            r#"{"version":"1","tests":[{"selector":"crate::module::test_case"}]}"#,
-        )
-        .expect("valid plan");
+    allure::description("Verifies selector matching requires the exact full test name.");
+    let plan = parse_test_plan_input(
+        "exact selector",
+        r#"{"version":"1","tests":[{"selector":"crate::module::test_case"}]}"#,
+    )
+    .expect("valid plan");
 
-        assert!(plan.is_selected(Some("crate::module::test_case"), None, None));
-        assert!(!plan.is_selected(Some("module::test_case"), None, None));
-        assert!(!plan.is_selected(None, None, None));
-    });
+    assert!(plan.is_selected(Some("crate::module::test_case"), None, None));
+    assert!(!plan.is_selected(Some("module::test_case"), None, None));
+    assert!(!plan.is_selected(None, None, None));
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn prefers_id_match_over_selector_within_entry() {
-    allure::test(|| {
-        allure::description(
-            "Verifies an explicit Allure id match takes precedence over the selector in the same entry.",
-        );
-        let plan = parse_test_plan_input(
-            "id and selector entry",
-            r#"{"version":"1","tests":[{"id":"777","selector":"crate::module::test_case"}]}"#,
-        )
-        .expect("valid plan");
+    allure::description(
+        "Verifies an explicit Allure id match takes precedence over the selector in the same entry.",
+    );
+    let plan = parse_test_plan_input(
+        "id and selector entry",
+        r#"{"version":"1","tests":[{"id":"777","selector":"crate::module::test_case"}]}"#,
+    )
+    .expect("valid plan");
 
-        assert!(plan.is_selected(Some("different::name"), Some("777"), None));
-        assert!(!plan.is_selected(Some("crate::module::test_case"), Some("999"), None));
-    });
+    assert!(plan.is_selected(Some("different::name"), Some("777"), None));
+    assert!(!plan.is_selected(Some("crate::module::test_case"), Some("999"), None));
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn falls_back_to_metadata_tags_for_allure_id() {
-    allure::test(|| {
-        allure::description(
-            "Verifies metadata tags can provide the Allure id used for test-plan selection.",
-        );
-        let plan = parse_test_plan_input(
-            "metadata tag fallback",
-            r#"{"version":"1","tests":[{"id":"A-2"}]}"#,
-        )
-        .expect("valid plan");
+    allure::description(
+        "Verifies metadata tags can provide the Allure id used for test-plan selection.",
+    );
+    let plan = parse_test_plan_input(
+        "metadata tag fallback",
+        r#"{"version":"1","tests":[{"id":"A-2"}]}"#,
+    )
+    .expect("valid plan");
 
-        let tags = ["smoke", "@allure.id=A-2"];
-        assert!(plan.is_selected(Some("crate::module::test_case"), None, Some(&tags)));
+    let tags = ["smoke", "@allure.id=A-2"];
+    assert!(plan.is_selected(Some("crate::module::test_case"), None, Some(&tags)));
 
-        let colon_tags = ["@allure.id:A-2"];
-        assert!(plan.is_selected(None, None, Some(&colon_tags)));
-    });
+    let colon_tags = ["@allure.id:A-2"];
+    assert!(plan.is_selected(None, None, Some(&colon_tags)));
 }
 
+#[crate::allure_test]
 #[test]
 #[crate::log_asserts]
 fn explicit_adapter_id_takes_precedence_over_tag_fallback() {
-    allure::test(|| {
-        allure::description(
-            "Verifies an adapter-provided Allure id overrides tag-derived fallback ids.",
-        );
-        let plan = parse_test_plan_input(
-            "explicit adapter id",
-            r#"{"version":"1","tests":[{"id":"A-2"}]}"#,
-        )
-        .expect("valid plan");
+    allure::description(
+        "Verifies an adapter-provided Allure id overrides tag-derived fallback ids.",
+    );
+    let plan = parse_test_plan_input(
+        "explicit adapter id",
+        r#"{"version":"1","tests":[{"id":"A-2"}]}"#,
+    )
+    .expect("valid plan");
 
-        let tags = ["@allure.id=A-2"];
-        assert!(!plan.is_selected(None, Some("B-1"), Some(&tags)));
-    });
+    let tags = ["@allure.id=A-2"];
+    assert!(!plan.is_selected(None, Some("B-1"), Some(&tags)));
 }
