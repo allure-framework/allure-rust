@@ -638,6 +638,7 @@ mod tests {
         allure_test(
             module_path!(),
             "enables_assertion_logging_by_default",
+            "Verifies assertion logging is enabled when no package metadata override is set.",
             || {
                 let config = parse_config("");
 
@@ -651,6 +652,7 @@ mod tests {
         allure_test(
             module_path!(),
             "package_metadata_can_disable_assertion_logging",
+            "Verifies package metadata can disable assertion step logging for the current manifest.",
             || {
                 let config = parse_config(
                     r#"
@@ -669,6 +671,7 @@ log_asserts = false
         allure_test(
             module_path!(),
             "parses_package_metadata_allure_labels",
+            "Verifies package metadata labels and module-specific labels are parsed for matching source paths.",
             || {
                 let config = parse_config(
                     r#"
@@ -730,6 +733,7 @@ story = ["visa", "mastercard"]
         allure_test(
             module_path!(),
             "collects_global_labels_from_environment_variables",
+            "Verifies ALLURE_LABEL environment variables become runtime labels.",
             || {
                 let labels = global_labels_from_env_vars([
                     ("ALLURE_LABEL_component".to_string(), "checkout".to_string()),

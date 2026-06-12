@@ -13,6 +13,8 @@ fn step_assertions_are_nested() {
 #[allure_test]
 #[test]
 fn logs_passing_assertions() {
+    allure.description("Verifies passing standard assertions are emitted as reviewable Allure steps.");
+    allure.log_step("run passing assertion matrix");
     assert!(true);
     assert_eq!("actual", "actual");
     assert_ne!("left", "right");
@@ -24,5 +26,7 @@ fn logs_passing_assertions() {
 #[allure_test]
 #[test]
 fn logs_failed_assertion_details() {
+    allure.description("Verifies a failed standard assertion records actual and expected values in status details.");
+    allure.log_step("run assertion that should fail with captured details");
     assert_eq!("actual", "expected");
 }

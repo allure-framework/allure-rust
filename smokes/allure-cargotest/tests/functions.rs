@@ -4,6 +4,7 @@ use allure_rust_commons::{attachment, feature, log_step, parameter, stage};
 #[allure_test]
 #[test]
 fn uses_commons_runtime_functions() {
+    allure.description("Verifies thread-bound commons facade functions write labels, parameters, steps, stages, and attachments.");
     feature("Runtime functions");
     parameter("source", "commons");
     stage("log from commons");

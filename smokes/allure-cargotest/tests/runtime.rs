@@ -3,6 +3,7 @@ use allure_rust_commons as allure;
 #[test]
 fn uses_commons_test_runtime() {
     allure::test(|| {
+        allure::description("Verifies the macro-free commons test runtime writes metadata, steps, and attachments.");
         allure::feature("Manual runtime");
         allure::parameter("style", "no-macro");
         allure::stage("log from manual runtime");

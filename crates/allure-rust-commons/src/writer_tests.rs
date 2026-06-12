@@ -29,6 +29,7 @@ fn write_result_wrapper_writes_result_json() {
     allure_test(
         module_path!(),
         "write_result_wrapper_writes_result_json",
+        "Verifies the writer persists raw result JSON with the expected result-file name.",
         || {
             let writer = make_writer();
             let result = TestResult {
@@ -50,6 +51,7 @@ fn write_result_typed_writes_result_json() {
     allure_test(
         module_path!(),
         "write_result_typed_writes_result_json",
+        "Verifies the typed result writer serializes test results to Allure result files.",
         || {
             let writer = make_writer();
             let result = TestResult {
@@ -75,6 +77,7 @@ fn write_container_and_typed_write_container_json() {
     allure_test(
         module_path!(),
         "write_container_and_typed_write_container_json",
+        "Verifies raw and typed container writes produce Allure container files.",
         || {
             let writer = make_writer();
             let container = TestResultContainer {
@@ -104,6 +107,7 @@ fn write_globals_and_typed_write_globals_json() {
     allure_test(
         module_path!(),
         "write_globals_and_typed_write_globals_json",
+        "Verifies raw and typed global metadata writes produce the globals file.",
         || {
             let writer = make_writer();
             let globals = Globals {
@@ -147,6 +151,7 @@ fn write_environment_properties_writes_sorted_pairs() {
     allure_test(
         module_path!(),
         "write_environment_properties_writes_sorted_pairs",
+        "Verifies environment properties are written in deterministic sorted order.",
         || {
             let writer = make_writer();
             let properties = HashMap::from([
@@ -169,6 +174,7 @@ fn write_categories_and_typed_write_categories_json() {
     allure_test(
         module_path!(),
         "write_categories_and_typed_write_categories_json",
+        "Verifies raw and typed categories writes produce the Allure categories file.",
         || {
             let writer = make_writer();
             let categories = Categories(vec![Category {
@@ -199,6 +205,7 @@ fn write_attachment_methods_write_expected_files() {
     allure_test(
         module_path!(),
         "write_attachment_methods_write_expected_files",
+        "Verifies attachment writer APIs persist byte, string, and path-based attachments.",
         || {
             let writer = make_writer();
 
@@ -234,25 +241,30 @@ fn write_attachment_methods_write_expected_files() {
 
 #[test]
 fn serializes_with_escaped_strings() {
-    allure_test(module_path!(), "serializes_with_escaped_strings", || {
-        let result = TestResult {
-            uuid: "u-1".to_string(),
-            name: "line1\n\"quoted\"\\slash".to_string(),
-            status: Some(Status::Passed),
-            attachments: vec![Attachment {
-                name: "att\n\"n\"".to_string(),
-                source: "s\\x".to_string(),
-                content_type: "application/json".to_string(),
-            }],
-            ..Default::default()
-        };
+    allure_test(
+        module_path!(),
+        "serializes_with_escaped_strings",
+        "Verifies JSON serialization escapes strings without losing their values.",
+        || {
+            let result = TestResult {
+                uuid: "u-1".to_string(),
+                name: "line1\n\"quoted\"\\slash".to_string(),
+                status: Some(Status::Passed),
+                attachments: vec![Attachment {
+                    name: "att\n\"n\"".to_string(),
+                    source: "s\\x".to_string(),
+                    content_type: "application/json".to_string(),
+                }],
+                ..Default::default()
+            };
 
-        let json = serde_json::to_string(&result).expect("test result should serialize");
+            let json = serde_json::to_string(&result).expect("test result should serialize");
 
-        assert!(json.contains("line1\\n\\\"quoted\\\"\\\\slash"));
-        assert!(json.contains("att\\n\\\"n\\\""));
-        assert!(json.contains("s\\\\x"));
-    });
+            assert!(json.contains("line1\\n\\\"quoted\\\"\\\\slash"));
+            assert!(json.contains("att\\n\\\"n\\\""));
+            assert!(json.contains("s\\\\x"));
+        },
+    );
 }
 
 #[test]
@@ -260,6 +272,7 @@ fn attachment_filename_prefers_name_extension() {
     allure_test(
         module_path!(),
         "attachment_filename_prefers_name_extension",
+        "Verifies attachment filenames preserve an extension supplied in the attachment name.",
         || {
             let source =
                 attachment_source_name("abc", Some("report.custom"), Some("application/json"));
@@ -273,6 +286,7 @@ fn attachment_filename_falls_back_to_content_type() {
     allure_test(
         module_path!(),
         "attachment_filename_falls_back_to_content_type",
+        "Verifies attachment filenames derive a useful extension from the content type.",
         || {
             let source = attachment_source_name(
                 "abc",
@@ -289,6 +303,7 @@ fn attachment_filename_falls_back_to_http_exchange_content_type() {
     allure_test(
         module_path!(),
         "attachment_filename_falls_back_to_http_exchange_content_type",
+        "Verifies HTTP exchange attachments receive the expected rich-format extension.",
         || {
             let source = attachment_source_name(
                 "abc",
@@ -305,6 +320,7 @@ fn attachment_filename_has_no_extension_when_unknown() {
     allure_test(
         module_path!(),
         "attachment_filename_has_no_extension_when_unknown",
+        "Verifies attachments avoid inventing an extension when neither name nor content type identifies one.",
         || {
             let source =
                 attachment_source_name("abc", Some("report"), Some("application/x-custom"));

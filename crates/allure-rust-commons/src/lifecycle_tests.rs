@@ -6,7 +6,12 @@ use crate::{
 use std::{fs, path::PathBuf};
 
 fn reset_active_roots() {
-    ACTIVE_TEST_ROOT.with(|cell| cell.borrow_mut().clear());
+    ACTIVE_TEST_ROOT.with(|cell| {
+        let mut roots = cell.borrow_mut();
+        if !roots.is_empty() {
+            roots.truncate(1);
+        }
+    });
     ACTIVE_SCOPE_ROOT.with(|cell| *cell.borrow_mut() = None);
 }
 
@@ -62,6 +67,7 @@ fn test_case_public_methods_are_persisted() {
     allure_test(
         module_path!(),
         "test_case_public_methods_are_persisted",
+        "Verifies public lifecycle test-case metadata APIs persist their values in the result file.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("test-case-public-methods");
 
@@ -83,7 +89,16 @@ fn test_case_public_methods_are_persisted() {
             lifecycle.stop_step(Status::Passed, None);
             lifecycle.stop_test_case(Status::Passed, None);
 
-            assert!(lifecycle.current_test_uuid().is_none());
+            assert_ne!(
+                lifecycle.current_test_uuid().as_deref(),
+                Some(test_uuid.as_str())
+            );
+            assert!(!lifecycle
+                .state
+                .lock()
+                .expect("lifecycle lock should be available")
+                .tests
+                .contains_key(&test_uuid));
 
             let results = read_jsons_with_suffix(&out_dir, "-result.json");
             assert_eq!(results.len(), 1);
@@ -106,6 +121,7 @@ fn add_http_exchange_writes_httpexchange_attachment() {
     allure_test(
         module_path!(),
         "add_http_exchange_writes_httpexchange_attachment",
+        "Verifies lifecycle HTTP exchange evidence is written as a rich Allure attachment.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("http-exchange-attachment");
 
@@ -145,6 +161,7 @@ fn nested_test_contexts_restore_outer_active_test() {
     allure_test(
         module_path!(),
         "nested_test_contexts_restore_outer_active_test",
+        "Verifies nested lifecycle tests restore the outer active test after the inner test stops.",
         || {
             let (outer, outer_dir) = make_lifecycle("nested-outer");
 
@@ -187,6 +204,7 @@ fn facade_http_exchange_named_wraps_attachment_in_ordered_step() {
     allure_test(
         module_path!(),
         "facade_http_exchange_named_wraps_attachment_in_ordered_step",
+        "Verifies facade HTTP exchange evidence is wrapped in the requested ordered step.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("facade-http-exchange-step");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
@@ -229,6 +247,7 @@ fn reporter_http_exchange_keeps_exact_active_step_owner() {
     allure_test(
         module_path!(),
         "reporter_http_exchange_keeps_exact_active_step_owner",
+        "Verifies reporter HTTP exchange attachments stay on the active step that produced them.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("reporter-http-exchange-step");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
@@ -257,6 +276,7 @@ fn facade_metadata_parameters_and_wrapped_file_attachments_are_persisted() {
     allure_test(
         module_path!(),
         "facade_metadata_parameters_and_wrapped_file_attachments_are_persisted",
+        "Verifies facade metadata, parameters, and wrapped file attachments are persisted together.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("facade-reference-surface");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
@@ -329,6 +349,7 @@ fn facade_global_diagnostics_use_lifecycle_writer() {
     allure_test(
         module_path!(),
         "facade_global_diagnostics_use_lifecycle_writer",
+        "Verifies facade global diagnostics are emitted through the configured lifecycle writer.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("facade-global-diagnostics");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle);
@@ -381,6 +402,7 @@ fn start_test_case_accepts_optional_test_result_fields() {
     allure_test(
         module_path!(),
         "start_test_case_accepts_optional_test_result_fields",
+        "Verifies starting a test case accepts optional Allure result fields and writes them unchanged.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("start-test-case-params");
 
@@ -457,6 +479,7 @@ fn start_with_full_name_derives_test_case_id_and_finalizes_dangling_steps() {
     allure_test(
         module_path!(),
         "start_with_full_name_derives_test_case_id_and_finalizes_dangling_steps",
+        "Verifies full-name startup derives identifiers and finalizes dangling steps at test stop.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("full-name-and-finalize");
 
@@ -483,6 +506,7 @@ fn derives_history_id_after_scope_metadata_is_merged() {
     allure_test(
         module_path!(),
         "derives_history_id_after_scope_metadata_is_merged",
+        "Verifies the history id is derived after scope metadata has been merged into the result.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("history-id-after-merge");
 
@@ -541,6 +565,7 @@ fn stop_paths_normalize_missing_timing_fields() {
     allure_test(
         module_path!(),
         "stop_paths_normalize_missing_timing_fields",
+        "Verifies stop paths normalize missing timing fields before writing results and containers.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("normalize-missing-timing");
 
@@ -593,6 +618,7 @@ fn scope_and_fixture_public_methods_write_container_and_merge_metadata() {
     allure_test(
         module_path!(),
         "scope_and_fixture_public_methods_write_container_and_merge_metadata",
+        "Verifies scope and fixture APIs write containers and merge metadata into the active test.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("scope-and-fixtures");
 
@@ -659,6 +685,7 @@ fn stop_step_preserves_existing_runtime_status_and_metadata_operations_target_cu
     allure_test(
         module_path!(),
         "stop_step_preserves_existing_runtime_status_and_metadata_operations_target_current_step",
+        "Verifies stopping steps preserves runtime status and routes metadata to the current step.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("step-metadata-and-preserve-status");
 
@@ -715,6 +742,7 @@ fn log_step_with_uses_same_start_and_stop_timestamp() {
     allure_test(
         module_path!(),
         "log_step_with_uses_same_start_and_stop_timestamp",
+        "Verifies log steps use a stable single timestamp for start and stop.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("log-step-same-timestamp");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
@@ -736,6 +764,7 @@ fn runtime_stage_boundaries_create_sibling_steps_and_nest_runtime_steps() {
     allure_test(
         module_path!(),
         "runtime_stage_boundaries_create_sibling_steps_and_nest_runtime_steps",
+        "Verifies runtime stage boundaries create sibling steps and nest runtime steps correctly.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("runtime-stage-siblings");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
@@ -773,6 +802,7 @@ fn runtime_stage_inside_wrapping_step_is_nested_under_that_step() {
     allure_test(
         module_path!(),
         "runtime_stage_inside_wrapping_step_is_nested_under_that_step",
+        "Verifies runtime stages opened inside a wrapping step are nested under that step.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("runtime-stage-inside-step");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
@@ -805,6 +835,7 @@ fn runtime_stage_inherits_enclosing_failure_status() {
     allure_test(
         module_path!(),
         "runtime_stage_inherits_enclosing_failure_status",
+        "Verifies runtime stages inherit the failure status from their enclosing failing step.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("runtime-stage-failure");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
@@ -837,6 +868,7 @@ fn step_classifies_panic_and_rethrows_original_error() {
     allure_test(
         module_path!(),
         "step_classifies_panic_and_rethrows_original_error",
+        "Verifies step execution classifies panics and rethrows the original error.",
         || {
             let (lifecycle, out_dir) = make_lifecycle("step-with-classifies-panic");
             let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle.clone());
