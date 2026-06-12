@@ -1,3 +1,6 @@
+//! Small MD5 helper used for Allure history identifiers.
+
+/// Returns the lowercase hexadecimal MD5 digest of a string.
 pub fn md5_hex(input: &str) -> String {
     let digest = md5(input.as_bytes());
     let mut out = String::with_capacity(32);

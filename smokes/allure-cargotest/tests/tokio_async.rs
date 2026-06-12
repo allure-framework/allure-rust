@@ -21,9 +21,7 @@ async fn writes_tokio_async_metadata() {
 async fn writes_tokio_multi_thread_metadata_after_await() {
     tokio::task::yield_now().await;
     allure.label("component", "tokio-multi-thread");
-    {
-        let _direct = allure.step("direct async step");
-        tokio::task::yield_now().await;
-    }
+    allure.stage("direct async stage");
+    tokio::task::yield_now().await;
     async_helper_step().await;
 }

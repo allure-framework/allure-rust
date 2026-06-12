@@ -1,3 +1,5 @@
+//! Low-level lifecycle owner for mutable Allure test state.
+
 use std::{
     cell::RefCell,
     cmp,
@@ -14,8 +16,8 @@ use crate::{
     http_exchange::{HttpExchange, HTTP_EXCHANGE_ATTACHMENT_MIME, HTTP_EXCHANGE_ATTACHMENT_NAME},
     md5::md5_hex,
     model::{
-        Attachment, FixtureResult, Label, Link, Parameter, Stage, Status, StatusDetails,
-        StepResult, TestResult, TestResultContainer,
+        Attachment, FixtureResult, GlobalAttachment, GlobalError, Globals, Label, Link, Parameter,
+        ParameterMode, Stage, Status, StatusDetails, StepResult, TestResult, TestResultContainer,
     },
     writer::FileSystemResultsWriter,
 };
@@ -131,18 +133,21 @@ fn derive_history_id(test: &TestResult) -> Option<String> {
     Some(md5_hex(&format!("{base}:{parameter_hash}")))
 }
 
+/// Factory for lifecycle instances that share a results writer.
 #[derive(Clone)]
 pub struct AllureRuntime {
     writer: Arc<FileSystemResultsWriter>,
 }
 
 impl AllureRuntime {
+    /// Creates a runtime backed by the given filesystem writer.
     pub fn new(writer: FileSystemResultsWriter) -> Self {
         Self {
             writer: Arc::new(writer),
         }
     }
 
+    /// Creates an independent lifecycle owner that writes through this runtime.
     pub fn lifecycle(&self) -> AllureLifecycle {
         AllureLifecycle {
             writer: Arc::clone(&self.writer),
@@ -151,35 +156,56 @@ impl AllureRuntime {
     }
 }
 
+/// Owns mutable in-progress Allure lifecycle state.
 #[derive(Clone)]
 pub struct AllureLifecycle {
     writer: Arc<FileSystemResultsWriter>,
     state: Arc<Mutex<LifecycleState>>,
 }
 
+/// Parameters used to start a test case.
 #[derive(Debug, Clone, Default)]
 pub struct StartTestCaseParams {
+    /// Optional explicit test UUID.
     pub uuid: Option<String>,
+    /// Test display name.
     pub name: String,
+    /// Stable fully qualified test name.
     pub full_name: Option<String>,
+    /// Optional explicit history identifier.
     pub history_id: Option<String>,
+    /// Optional explicit logical test case identifier.
     pub test_case_id: Option<String>,
+    /// Markdown description.
     pub description: Option<String>,
+    /// HTML description.
     pub description_html: Option<String>,
+    /// Initial status.
     pub status: Option<Status>,
+    /// Initial status details.
     pub status_details: Option<StatusDetails>,
+    /// Initial lifecycle stage.
     pub stage: Option<Stage>,
+    /// Initial labels.
     pub labels: Vec<Label>,
+    /// Initial links.
     pub links: Vec<Link>,
+    /// Initial parameters.
     pub parameters: Vec<Parameter>,
+    /// Initial steps.
     pub steps: Vec<StepResult>,
+    /// Initial attachments.
     pub attachments: Vec<Attachment>,
+    /// Optional title path.
     pub title_path: Option<Vec<String>>,
+    /// Optional start timestamp in milliseconds since the Unix epoch.
     pub start: Option<i64>,
+    /// Optional stop timestamp in milliseconds since the Unix epoch.
     pub stop: Option<i64>,
 }
 
 impl StartTestCaseParams {
+    /// Creates start parameters with a display name.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -187,6 +213,7 @@ impl StartTestCaseParams {
         }
     }
 
+    /// Sets the full name.
     pub fn with_full_name(mut self, full_name: impl Into<String>) -> Self {
         self.full_name = Some(full_name.into());
         self
@@ -216,7 +243,7 @@ struct LifecycleState {
 
 struct TestState {
     test: TestResult,
-    step_stack: Vec<StepResult>,
+    step_stack: Vec<RunningStep>,
     linked_scopes: Vec<String>,
 }
 
@@ -228,7 +255,7 @@ struct ScopeState {
 struct RunningFixture {
     kind: FixtureKind,
     fixture: FixtureResult,
-    step_stack: Vec<StepResult>,
+    step_stack: Vec<RunningStep>,
 }
 
 enum FixtureKind {
@@ -236,7 +263,47 @@ enum FixtureKind {
     After,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunningStepKind {
+    Step,
+    Stage,
+}
+
+struct RunningStep {
+    result: StepResult,
+    kind: RunningStepKind,
+}
+
+impl RunningStep {
+    fn new(name: impl Into<String>, timestamp: i64, kind: RunningStepKind) -> Self {
+        Self {
+            result: StepResult {
+                name: name.into(),
+                stage: Some(Stage::Running),
+                start: Some(timestamp),
+                ..Default::default()
+            },
+            kind,
+        }
+    }
+}
+
+impl std::ops::Deref for RunningStep {
+    type Target = StepResult;
+
+    fn deref(&self) -> &Self::Target {
+        &self.result
+    }
+}
+
+impl std::ops::DerefMut for RunningStep {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.result
+    }
+}
+
 impl AllureLifecycle {
+    /// Starts a test case and makes it current on this thread.
     pub fn start_test_case(&self, params: impl Into<StartTestCaseParams>) {
         let params = params.into();
         let name = params.name;
@@ -279,10 +346,12 @@ impl AllureLifecycle {
         ACTIVE_TEST_ROOT.with(|cell| cell.borrow_mut().push(uuid));
     }
 
+    /// Returns the UUID of the current test on this thread.
     pub fn current_test_uuid(&self) -> Option<String> {
         ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned())
     }
 
+    /// Stops and writes the current test case.
     pub fn stop_test_case(&self, status: Status, details: Option<StatusDetails>) {
         let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned()) else {
             return;
@@ -290,15 +359,24 @@ impl AllureLifecycle {
 
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
         if let Some(mut state) = lock.tests.remove(&test_uuid) {
-            finalize_steps(&mut state.step_stack, &mut state.test.steps);
+            finalize_steps(
+                &mut state.step_stack,
+                &mut state.test.steps,
+                status.clone(),
+                details.clone(),
+            );
             merge_before_scope_metadata(&lock, &mut state.test, &state.linked_scopes);
 
             state.test.status = Some(status);
             state.test.status_details = details;
             state.test.stage = Some(Stage::Finished);
             let fallback_stop = now_millis();
-            state.test.test_case_id = derive_test_case_id(&state.test);
-            state.test.history_id = derive_history_id(&state.test);
+            if state.test.test_case_id.is_none() {
+                state.test.test_case_id = derive_test_case_id(&state.test);
+            }
+            if state.test.history_id.is_none() {
+                state.test.history_id = derive_history_id(&state.test);
+            }
             normalize_test_result(&mut state.test, fallback_stop);
             let _ = self.writer.write_result(&state.test);
         }
@@ -313,6 +391,7 @@ impl AllureLifecycle {
         });
     }
 
+    /// Mutates the current test result.
     pub fn update_test_case<F>(&self, update: F)
     where
         F: FnOnce(&mut TestResult),
@@ -326,11 +405,19 @@ impl AllureLifecycle {
         }
     }
 
+    /// Sets the current test case identifier.
     pub fn set_test_case_id(&self, test_case_id: impl Into<String>) {
         let test_case_id = test_case_id.into();
         self.update_test_case(|test| test.test_case_id = Some(test_case_id));
     }
 
+    /// Sets the current test history identifier.
+    pub fn set_history_id(&self, history_id: impl Into<String>) {
+        let history_id = history_id.into();
+        self.update_test_case(|test| test.history_id = Some(history_id));
+    }
+
+    /// Adds a label to the current test.
     pub fn add_label(&self, name: impl Into<String>, value: impl Into<String>) {
         let name = name.into();
         let value = value.into();
@@ -345,6 +432,7 @@ impl AllureLifecycle {
         });
     }
 
+    /// Adds a link to the current test.
     pub fn add_link(
         &self,
         url: impl Into<String>,
@@ -361,19 +449,32 @@ impl AllureLifecycle {
         });
     }
 
+    /// Adds a parameter to the current test.
     pub fn add_parameter(&self, name: impl Into<String>, value: impl Into<String>) {
+        self.add_parameter_with_options(name, value, None, None);
+    }
+
+    /// Adds a parameter with identity and display options to the current test.
+    pub fn add_parameter_with_options(
+        &self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+        excluded: Option<bool>,
+        mode: Option<ParameterMode>,
+    ) {
         let name = name.into();
         let value = value.into();
         self.update_test_case(|test| {
             test.parameters.push(Parameter {
                 name,
                 value,
-                excluded: None,
-                mode: None,
+                excluded,
+                mode,
             })
         });
     }
 
+    /// Starts a fixture/test container scope.
     pub fn start_scope(&self, name: Option<String>) -> String {
         let uuid = next_id();
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
@@ -392,6 +493,7 @@ impl AllureLifecycle {
         uuid
     }
 
+    /// Links an existing scope to an existing test.
     pub fn link_scope_to_test(&self, scope_uuid: &str, test_uuid: &str) {
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
         let has_scope = lock.scopes.contains_key(scope_uuid);
@@ -417,6 +519,7 @@ impl AllureLifecycle {
         }
     }
 
+    /// Stops a scope and finalizes any running fixture inside it.
     pub fn stop_scope(&self, scope_uuid: &str) {
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
         if let Some(scope) = lock.scopes.get_mut(scope_uuid) {
@@ -430,6 +533,7 @@ impl AllureLifecycle {
         });
     }
 
+    /// Writes and removes a stopped scope.
     pub fn write_scope(&self, scope_uuid: &str) {
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
         if let Some(scope) = lock.scopes.remove(scope_uuid) {
@@ -437,10 +541,12 @@ impl AllureLifecycle {
         }
     }
 
+    /// Starts a before fixture inside a scope.
     pub fn start_before_fixture(&self, scope_uuid: &str, name: impl Into<String>) {
         self.start_fixture(scope_uuid, name.into(), FixtureKind::Before);
     }
 
+    /// Stops the running before fixture inside a scope.
     pub fn stop_before_fixture(
         &self,
         scope_uuid: &str,
@@ -450,10 +556,12 @@ impl AllureLifecycle {
         self.stop_fixture(scope_uuid, FixtureKind::Before, status, details);
     }
 
+    /// Starts an after fixture inside a scope.
     pub fn start_after_fixture(&self, scope_uuid: &str, name: impl Into<String>) {
         self.start_fixture(scope_uuid, name.into(), FixtureKind::After);
     }
 
+    /// Stops the running after fixture inside a scope.
     pub fn stop_after_fixture(
         &self,
         scope_uuid: &str,
@@ -463,6 +571,7 @@ impl AllureLifecycle {
         self.stop_fixture(scope_uuid, FixtureKind::After, status, details);
     }
 
+    /// Adds an attachment to the exact current owner.
     pub fn add_attachment(
         &self,
         name: impl Into<String>,
@@ -507,28 +616,71 @@ impl AllureLifecycle {
         }
     }
 
+    /// Adds an HTTP exchange attachment to the exact current owner.
     pub fn add_http_exchange(&self, exchange: HttpExchange) {
         self.add_http_exchange_named(HTTP_EXCHANGE_ATTACHMENT_NAME, exchange);
     }
 
+    /// Adds a named HTTP exchange attachment to the exact current owner.
     pub fn add_http_exchange_named(&self, name: impl Into<String>, exchange: HttpExchange) {
         if let Ok(bytes) = serde_json::to_vec(&exchange) {
             self.add_attachment(name, HTTP_EXCHANGE_ATTACHMENT_MIME, &bytes);
         }
     }
 
+    /// Writes a run-level attachment.
+    pub fn add_global_attachment(
+        &self,
+        name: impl Into<String>,
+        content_type: impl Into<String>,
+        bytes: &[u8],
+    ) -> std::io::Result<()> {
+        let name = name.into();
+        let content_type = content_type.into();
+        let (source, _) = self.writer.write_attachment_auto(
+            &next_id(),
+            Some(&name),
+            Some(&content_type),
+            bytes,
+        )?;
+        self.writer
+            .write_globals_typed(&Globals {
+                attachments: vec![GlobalAttachment {
+                    name,
+                    source,
+                    content_type,
+                }],
+                errors: Vec::new(),
+            })
+            .map(|_| ())
+    }
+
+    /// Writes a run-level error.
+    pub fn add_global_error(
+        &self,
+        message: impl Into<String>,
+        trace: Option<String>,
+    ) -> std::io::Result<()> {
+        self.writer
+            .write_globals_typed(&Globals {
+                attachments: Vec::new(),
+                errors: vec![GlobalError {
+                    message: message.into(),
+                    trace,
+                }],
+            })
+            .map(|_| ())
+    }
+
+    /// Starts a step under the current owner.
     pub fn start_step(&self, name: impl Into<String>) {
         self.start_step_at(name, None);
     }
 
+    /// Starts a step under the current owner at an optional timestamp.
     pub fn start_step_at(&self, name: impl Into<String>, timestamp: Option<i64>) -> i64 {
         let timestamp = timestamp.unwrap_or_else(now_millis);
-        let step = StepResult {
-            name: name.into(),
-            stage: Some(Stage::Running),
-            start: Some(timestamp),
-            ..Default::default()
-        };
+        let step = RunningStep::new(name, timestamp, RunningStepKind::Step);
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
 
         if let Some(scope_uuid) = ACTIVE_SCOPE_ROOT.with(|cell| cell.borrow().clone()) {
@@ -549,10 +701,51 @@ impl AllureLifecycle {
         timestamp
     }
 
+    /// Starts a semantic stage under the current owner.
+    pub fn start_stage(&self, name: impl Into<String>) {
+        self.start_stage_at(name, None);
+    }
+
+    /// Starts a semantic stage under the current owner at an optional timestamp.
+    pub fn start_stage_at(&self, name: impl Into<String>, timestamp: Option<i64>) -> i64 {
+        let timestamp = timestamp.unwrap_or_else(now_millis);
+        let name = name.into();
+        let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
+
+        if let Some(scope_uuid) = ACTIVE_SCOPE_ROOT.with(|cell| cell.borrow().clone()) {
+            if let Some(scope) = lock.scopes.get_mut(&scope_uuid) {
+                if let Some(fixture) = scope.running_fixture.as_mut() {
+                    start_stage_in_stack(
+                        &mut fixture.step_stack,
+                        &mut fixture.fixture.steps,
+                        name,
+                        timestamp,
+                    );
+                    return timestamp;
+                }
+            }
+        }
+
+        if let Some(test_uuid) = ACTIVE_TEST_ROOT.with(|cell| cell.borrow().last().cloned()) {
+            if let Some(test_state) = lock.tests.get_mut(&test_uuid) {
+                start_stage_in_stack(
+                    &mut test_state.step_stack,
+                    &mut test_state.test.steps,
+                    name,
+                    timestamp,
+                );
+            }
+        }
+
+        timestamp
+    }
+
+    /// Stops the current step.
     pub fn stop_step(&self, status: Status, details: Option<StatusDetails>) {
         self.stop_step_at(None, status, details);
     }
 
+    /// Stops the current step at an optional timestamp.
     pub fn stop_step_at(
         &self,
         timestamp: Option<i64>,
@@ -589,6 +782,7 @@ impl AllureLifecycle {
         }
     }
 
+    /// Renames the current step.
     pub fn set_current_step_display_name(&self, name: impl Into<String>) {
         let name = name.into();
         self.update_current_step(
@@ -597,12 +791,24 @@ impl AllureLifecycle {
         );
     }
 
+    /// Adds a parameter to the current step.
     pub fn add_current_step_parameter(&self, name: impl Into<String>, value: impl Into<String>) {
+        self.add_current_step_parameter_with_options(name, value, None, None);
+    }
+
+    /// Adds a parameter with identity and display options to the current step.
+    pub fn add_current_step_parameter_with_options(
+        &self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+        excluded: Option<bool>,
+        mode: Option<ParameterMode>,
+    ) {
         let parameter = Parameter {
             name: name.into(),
             value: value.into(),
-            excluded: None,
-            mode: None,
+            excluded,
+            mode,
         };
         self.update_current_step(
             move |step| step.parameters.push(parameter),
@@ -628,7 +834,7 @@ impl AllureLifecycle {
         }
     }
 
-    fn update_current_step<F>(&self, update: F, missing_step_message: &str)
+    pub(crate) fn update_current_step<F>(&self, update: F, missing_step_message: &str)
     where
         F: FnOnce(&mut StepResult),
     {
@@ -676,7 +882,12 @@ impl AllureLifecycle {
                     return;
                 }
 
-                finalize_steps(&mut fixture.step_stack, &mut fixture.fixture.steps);
+                finalize_steps(
+                    &mut fixture.step_stack,
+                    &mut fixture.fixture.steps,
+                    status.clone(),
+                    details.clone(),
+                );
                 fixture.fixture.status = Some(status);
                 fixture.fixture.status_details = details;
                 fixture.fixture.stage = Some(Stage::Finished);
@@ -696,49 +907,130 @@ impl AllureLifecycle {
 }
 
 fn stop_one_step(
-    stack: &mut Vec<StepResult>,
+    stack: &mut Vec<RunningStep>,
+    root_steps: &mut Vec<StepResult>,
+    timestamp: Option<i64>,
+    status: Status,
+    details: Option<StatusDetails>,
+) {
+    close_active_stages(
+        stack,
+        root_steps,
+        timestamp,
+        status.clone(),
+        details.clone(),
+    );
+    if stack.is_empty() {
+        return;
+    }
+    stop_top_step(stack, root_steps, timestamp, status, details);
+}
+
+fn start_stage_in_stack(
+    stack: &mut Vec<RunningStep>,
+    root_steps: &mut Vec<StepResult>,
+    name: impl Into<String>,
+    timestamp: i64,
+) {
+    if matches!(
+        stack.last().map(|step| step.kind),
+        Some(RunningStepKind::Stage)
+    ) {
+        stop_top_step(stack, root_steps, Some(timestamp), Status::Passed, None);
+    }
+    stack.push(RunningStep::new(name, timestamp, RunningStepKind::Stage));
+}
+
+fn close_active_stages(
+    stack: &mut Vec<RunningStep>,
+    root_steps: &mut Vec<StepResult>,
+    timestamp: Option<i64>,
+    status: Status,
+    details: Option<StatusDetails>,
+) {
+    while matches!(
+        stack.last().map(|step| step.kind),
+        Some(RunningStepKind::Stage)
+    ) {
+        stop_top_step(
+            stack,
+            root_steps,
+            timestamp,
+            status.clone(),
+            details.clone(),
+        );
+    }
+}
+
+fn stop_top_step(
+    stack: &mut Vec<RunningStep>,
     root_steps: &mut Vec<StepResult>,
     timestamp: Option<i64>,
     status: Status,
     details: Option<StatusDetails>,
 ) {
     if let Some(mut step) = stack.pop() {
-        step.status.get_or_insert(status);
-        if step.status_details.is_none() {
-            step.status_details = details;
-        }
-        step.stage = Some(Stage::Finished);
-        normalize_step_result(&mut step, timestamp.unwrap_or_else(now_millis));
-        if let Some(stop) = timestamp {
-            step.stop = Some(stop);
-            if step.start.is_none() {
-                step.start = Some(stop);
-            }
-        }
+        finish_step_result(&mut step.result, timestamp, status, details);
         if let Some(parent) = stack.last_mut() {
-            parent.steps.push(step);
+            parent.steps.push(step.result);
         } else {
-            root_steps.push(step);
+            root_steps.push(step.result);
         }
     }
 }
 
-fn finalize_steps(stack: &mut Vec<StepResult>, root_steps: &mut Vec<StepResult>) {
+fn finish_step_result(
+    step: &mut StepResult,
+    timestamp: Option<i64>,
+    status: Status,
+    details: Option<StatusDetails>,
+) {
+    step.status.get_or_insert(status);
+    if step.status_details.is_none() {
+        step.status_details = details;
+    }
+    step.stage = Some(Stage::Finished);
+    normalize_step_result(step, timestamp.unwrap_or_else(now_millis));
+    if let Some(stop) = timestamp {
+        step.stop = Some(stop);
+        if step.start.is_none() {
+            step.start = Some(stop);
+        }
+    }
+}
+
+fn finalize_steps(
+    stack: &mut Vec<RunningStep>,
+    root_steps: &mut Vec<StepResult>,
+    context_status: Status,
+    context_details: Option<StatusDetails>,
+) {
     while let Some(mut step) = stack.pop() {
-        step.status.get_or_insert(Status::Broken);
-        step.stage = Some(Stage::Finished);
-        normalize_step_result(&mut step, now_millis());
+        let status = match step.kind {
+            RunningStepKind::Step => Status::Broken,
+            RunningStepKind::Stage => context_status.clone(),
+        };
+        let details = match step.kind {
+            RunningStepKind::Step => None,
+            RunningStepKind::Stage => context_details.clone(),
+        };
+        finish_step_result(&mut step.result, None, status, details);
         if let Some(parent) = stack.last_mut() {
-            parent.steps.push(step);
+            parent.steps.push(step.result);
         } else {
-            root_steps.push(step);
+            root_steps.push(step.result);
         }
     }
 }
 
 fn finish_running_fixture(scope: &mut ScopeState) {
     if let Some(mut fixture) = scope.running_fixture.take() {
-        finalize_steps(&mut fixture.step_stack, &mut fixture.fixture.steps);
+        finalize_steps(
+            &mut fixture.step_stack,
+            &mut fixture.fixture.steps,
+            Status::Broken,
+            None,
+        );
         fixture.fixture.status.get_or_insert(Status::Broken);
         fixture.fixture.stage = Some(Stage::Finished);
         normalize_fixture_result(&mut fixture.fixture, now_millis());

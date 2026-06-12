@@ -7,6 +7,7 @@ autotests = false
 
 [dependencies]
 allure-cargotest = { path = "../../crates/allure-cargotest" }
+allure-rust-commons = { path = "../../crates/allure-rust-commons" }
 
 [package.metadata.allure.labels]
 module = "allure-cargotest-smoke"
@@ -32,6 +33,10 @@ name = "descriptions"
 path = "tests/descriptions.rs"
 
 [[test]]
+name = "functions"
+path = "tests/functions.rs"
+
+[[test]]
 name = "identifiers"
 path = "tests/identifiers.rs"
 
@@ -46,6 +51,10 @@ path = "tests/links.rs"
 [[test]]
 name = "parameters"
 path = "tests/parameters.rs"
+
+[[test]]
+name = "runtime"
+path = "tests/runtime.rs"
 
 [[test]]
 name = "selective"

@@ -12,6 +12,8 @@
 //! errors. In-memory request bodies are captured with a bounded limit. Response body capture is
 //! opt-in through [`CaptureOptions`].
 
+#![deny(missing_docs)]
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use allure_rust_commons::{
@@ -38,37 +40,44 @@ pub struct CaptureOptions {
 }
 
 impl CaptureOptions {
+    /// Sets the attachment step/name used for captured HTTP exchanges.
     pub fn with_attachment_name(mut self, attachment_name: impl Into<String>) -> Self {
         self.attachment_name = Some(attachment_name.into());
         self
     }
 
+    /// Disables request body capture.
     pub fn without_request_body_capture(mut self) -> Self {
         self.capture_request_body = false;
         self
     }
 
+    /// Enables response body capture with the given maximum body size.
     pub fn with_response_body_capture(mut self, max_body_size: usize) -> Self {
         self.capture_response_body = true;
         self.max_body_size = max_body_size;
         self
     }
 
+    /// Disables response body capture.
     pub fn without_response_body_capture(mut self) -> Self {
         self.capture_response_body = false;
         self
     }
 
+    /// Sets the maximum number of body bytes to capture.
     pub fn with_max_body_size(mut self, max_body_size: usize) -> Self {
         self.max_body_size = max_body_size;
         self
     }
 
+    /// Redacts a header by name.
     pub fn redact_header(mut self, name: impl Into<String>) -> Self {
         self.redacted_headers.push(normalize_name(name.into()));
         self
     }
 
+    /// Redacts a query parameter by name.
     pub fn redact_query_param(mut self, name: impl Into<String>) -> Self {
         self.redacted_query_params.push(normalize_name(name.into()));
         self
@@ -114,10 +123,12 @@ pub struct AllureReqwestClient {
 }
 
 impl AllureReqwestClient {
+    /// Creates a client using a new `reqwest::Client`.
     pub fn new(allure: AllureFacade) -> Self {
         Self::with_client(reqwest::Client::new(), allure)
     }
 
+    /// Creates a wrapper around an existing `reqwest::Client`.
     pub fn with_client(client: reqwest::Client, allure: AllureFacade) -> Self {
         Self {
             client,
@@ -126,47 +137,58 @@ impl AllureReqwestClient {
         }
     }
 
+    /// Replaces capture options.
     pub fn with_options(mut self, options: CaptureOptions) -> Self {
         self.options = options;
         self
     }
 
+    /// Returns the wrapped reqwest client.
     pub fn inner(&self) -> &reqwest::Client {
         &self.client
     }
 
+    /// Creates a request builder for an arbitrary method.
     pub fn request(&self, method: Method, url: impl reqwest::IntoUrl) -> RequestBuilder {
         self.client.request(method, url)
     }
 
+    /// Creates a `GET` request builder.
     pub fn get(&self, url: impl reqwest::IntoUrl) -> RequestBuilder {
         self.client.get(url)
     }
 
+    /// Creates a `POST` request builder.
     pub fn post(&self, url: impl reqwest::IntoUrl) -> RequestBuilder {
         self.client.post(url)
     }
 
+    /// Creates a `PUT` request builder.
     pub fn put(&self, url: impl reqwest::IntoUrl) -> RequestBuilder {
         self.client.put(url)
     }
 
+    /// Creates a `PATCH` request builder.
     pub fn patch(&self, url: impl reqwest::IntoUrl) -> RequestBuilder {
         self.client.patch(url)
     }
 
+    /// Creates a `DELETE` request builder.
     pub fn delete(&self, url: impl reqwest::IntoUrl) -> RequestBuilder {
         self.client.delete(url)
     }
 
+    /// Creates a `HEAD` request builder.
     pub fn head(&self, url: impl reqwest::IntoUrl) -> RequestBuilder {
         self.client.head(url)
     }
 
+    /// Builds and executes a request builder while capturing an HTTP exchange.
     pub async fn send(&self, request: RequestBuilder) -> reqwest::Result<Response> {
         self.execute(request.build()?).await
     }
 
+    /// Executes a request while capturing an HTTP exchange.
     pub async fn execute(&self, request: Request) -> reqwest::Result<Response> {
         execute_with_capture(
             &self.allure,
@@ -421,6 +443,7 @@ fn now_millis() -> i64 {
 }
 
 #[cfg(feature = "middleware")]
+/// `reqwest_middleware` integration for automatic HTTP exchange capture.
 pub mod middleware {
     use super::*;
 
@@ -435,6 +458,7 @@ pub mod middleware {
     }
 
     impl AllureReqwestMiddleware {
+        /// Creates middleware that records exchanges through the provided Allure facade.
         pub fn new(allure: AllureFacade) -> Self {
             Self {
                 allure,
@@ -442,6 +466,7 @@ pub mod middleware {
             }
         }
 
+        /// Configures capture behavior for subsequent middleware requests.
         pub fn with_options(mut self, options: CaptureOptions) -> Self {
             self.options = options;
             self

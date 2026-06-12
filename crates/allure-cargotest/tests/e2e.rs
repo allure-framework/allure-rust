@@ -1,5 +1,4 @@
-use allure_rust_commons::md5_hex;
-mod support;
+use allure_rust_commons::{self as allure, md5_hex};
 
 use std::{
     collections::HashMap,
@@ -9,7 +8,6 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-use support::allure_test;
 
 static TEMP_PROJECT_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -44,395 +42,478 @@ impl Drop for TempProjectDir {
 
 #[test]
 fn generates_allure_results_for_descriptions_sample() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_descriptions_sample",
-        || {
-            let (results, _, _project_dir) = run_sample("descriptions", true);
-            let result = results
-                .get("writes_descriptions")
-                .expect("missing writes_descriptions result");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("descriptions", true);
+        let result = results
+            .get("writes_descriptions")
+            .expect("missing writes_descriptions result");
 
-            assert_has_allure_result_fields(result);
-            assert_eq!(json_string(result, "status"), Some("passed"));
-            assert_eq!(
-                json_string(result, "description"),
-                Some("markdown description")
-            );
-            assert_eq!(
-                json_string(result, "descriptionHtml"),
-                Some("<p>html description</p>")
-            );
-        },
-    );
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
+        assert_eq!(
+            json_string(result, "description"),
+            Some("markdown description")
+        );
+        assert_eq!(
+            json_string(result, "descriptionHtml"),
+            Some("<p>html description</p>")
+        );
+    });
 }
 
 #[test]
 fn generates_allure_results_for_labels_sample() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_labels_sample",
-        || {
-            let (results, _, _project_dir) = run_sample("labels", true);
-            let result = results
-                .get("writes_all_labels")
-                .expect("missing writes_all_labels result");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("labels", true);
+        let result = results
+            .get("writes_all_labels")
+            .expect("missing writes_all_labels result");
 
-            assert_has_allure_result_fields(result);
-            assert_eq!(json_string(result, "status"), Some("passed"));
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
 
-            assert!(contains_label(result, "custom", "v1"));
-            assert!(contains_label(result, "team", "qa"));
-            assert!(contains_label(result, "component", "billing"));
-            assert!(contains_label(result, "epic", "checkout"));
-            assert!(contains_label(result, "feature", "payment"));
-            assert!(contains_label(result, "story", "pay by card"));
-            assert!(contains_label(result, "suite", "api-suite"));
-            assert!(contains_label(result, "parentSuite", "integration"));
-            assert!(contains_label(result, "subSuite", "card-flows"));
-            assert!(contains_label(result, "owner", "alice"));
-            assert!(contains_label(result, "severity", "critical"));
-            assert!(contains_label(result, "layer", "e2e"));
-            assert!(contains_label(result, "tag", "smoke"));
-            assert!(contains_label(result, "tag", "regression"));
-            assert!(contains_label(result, "ALLURE_ID", "T-42"));
-            assert!(result.contains("\"url\":\"https://example.test/wiki\",\"type\":\"custom\""));
-            assert!(
-                result.contains("\"url\":\"https://example.test/issue/456\",\"type\":\"issue\"")
-            );
-        },
-    );
+        assert!(contains_label(result, "custom", "v1"));
+        assert!(contains_label(result, "team", "qa"));
+        assert!(contains_label(result, "component", "billing"));
+        assert!(contains_label(result, "epic", "checkout"));
+        assert!(contains_label(result, "feature", "payment"));
+        assert!(contains_label(result, "story", "pay by card"));
+        assert!(contains_label(result, "suite", "api-suite"));
+        assert!(contains_label(result, "parentSuite", "integration"));
+        assert!(contains_label(result, "subSuite", "card-flows"));
+        assert!(contains_label(result, "owner", "alice"));
+        assert!(contains_label(result, "severity", "critical"));
+        assert!(contains_label(result, "layer", "e2e"));
+        assert!(contains_label(result, "tag", "smoke"));
+        assert!(contains_label(result, "tag", "regression"));
+        assert!(contains_label(result, "ALLURE_ID", "T-42"));
+        assert!(result.contains("\"url\":\"https://example.test/wiki\",\"type\":\"custom\""));
+        assert!(result.contains("\"url\":\"https://example.test/issue/456\",\"type\":\"issue\""));
+    });
 }
 
 #[test]
 fn generates_synthetic_suite_labels_when_not_overridden() {
-    allure_test(
-        module_path!(),
-        "generates_synthetic_suite_labels_when_not_overridden",
-        || {
-            let (results, _, _project_dir) = run_sample("labels", true);
-            let result = results
-                .get("derives_synthetic_suite_labels_by_default")
-                .expect("missing derives_synthetic_suite_labels_by_default result");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("labels", true);
+        let result = results
+            .get("derives_synthetic_suite_labels_by_default")
+            .expect("missing derives_synthetic_suite_labels_by_default result");
 
-            assert_has_allure_result_fields(result);
-            assert_eq!(json_string(result, "status"), Some("passed"));
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
 
-            assert!(contains_label(result, "suite", "allure"));
-            assert!(!contains_label_name(result, "parentSuite"));
-            assert!(!contains_label_name(result, "subSuite"));
-        },
-    );
+        assert!(contains_label(result, "suite", "allure"));
+        assert!(!contains_label_name(result, "parentSuite"));
+        assert!(!contains_label_name(result, "subSuite"));
+    });
 }
 
 #[test]
 fn generates_allure_results_for_links_sample() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_links_sample",
-        || {
-            let (results, _, _project_dir) = run_sample("links", true);
-            let result = results
-                .get("writes_links")
-                .expect("missing writes_links result");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("links", true);
+        let result = results
+            .get("writes_links")
+            .expect("missing writes_links result");
 
-            assert_has_allure_result_fields(result);
-            assert_eq!(json_string(result, "status"), Some("passed"));
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
 
-            assert!(result.contains(
+        assert!(result.contains(
             "\"links\":[{\"name\":\"docs\",\"url\":\"https://example.test/docs\",\"type\":\"custom\"}"
         ));
-            assert!(
-                result.contains("\"url\":\"https://example.test/issue/123\",\"type\":\"issue\"")
-            );
-            assert!(result.contains("\"url\":\"https://example.test/tms/456\",\"type\":\"tms\""));
-        },
-    );
+        assert!(result.contains("\"url\":\"https://example.test/issue/123\",\"type\":\"issue\""));
+        assert!(result.contains("\"url\":\"https://example.test/tms/456\",\"type\":\"tms\""));
+    });
 }
 
 #[test]
 fn generates_allure_results_for_parameters_sample() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_parameters_sample",
-        || {
-            let (results, _, _project_dir) = run_sample("parameters", true);
-            let result = results
-                .get("writes_parameters")
-                .expect("missing writes_parameters result");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("parameters", true);
+        let result = results
+            .get("writes_parameters")
+            .expect("missing writes_parameters result");
 
-            assert_has_allure_result_fields(result);
-            assert_eq!(json_string(result, "status"), Some("passed"));
-            assert!(result.contains(
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
+        assert!(result.contains(
             "\"parameters\":[{\"name\":\"browser\",\"value\":\"firefox\",\"excluded\":null,\"mode\":null}"
         ));
-            assert!(result.contains(
-                "{\"name\":\"retries\",\"value\":\"2\",\"excluded\":null,\"mode\":null}]"
-            ));
-        },
-    );
+        assert!(result
+            .contains("{\"name\":\"retries\",\"value\":\"2\",\"excluded\":null,\"mode\":null}]"));
+    });
 }
 
 #[test]
 fn generates_allure_results_for_attachments_sample() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_attachments_sample",
-        || {
-            let (results, results_dir, _project_dir) = run_sample("attachments", true);
-            let result = results
-                .get("writes_attachment")
-                .expect("missing writes_attachment result");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, results_dir, _project_dir) = run_sample("attachments", true);
+        let result = results
+            .get("writes_attachment")
+            .expect("missing writes_attachment result");
 
-            assert_has_allure_result_fields(result);
-            assert_eq!(json_string(result, "status"), Some("passed"));
-            assert!(result.contains("\"attachments\":[{\"name\":\"hello.txt\""));
-            assert!(result.contains("\"type\":\"text/plain\""));
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
+        assert!(result.contains("\"attachments\":[{\"name\":\"hello.txt\""));
+        assert!(result.contains("\"type\":\"text/plain\""));
 
-            let attachment_source =
-                json_string(result, "source").expect("attachment source should exist");
-            let attachment_path = results_dir.join(attachment_source);
-            let attachment_content =
-                fs::read_to_string(attachment_path).expect("attachment should exist");
-            assert_eq!(attachment_content, "hello from attachments sample");
-        },
-    );
+        let attachment_source =
+            json_string(result, "source").expect("attachment source should exist");
+        let attachment_path = results_dir.join(attachment_source);
+        let attachment_content =
+            fs::read_to_string(attachment_path).expect("attachment should exist");
+        assert_eq!(attachment_content, "hello from attachments sample");
+    });
+}
+
+#[test]
+fn generates_allure_results_from_commons_runtime_functions() {
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, results_dir, _project_dir) = run_sample("functions", true);
+        let result = results
+            .get("uses_commons_runtime_functions")
+            .expect("missing uses_commons_runtime_functions result");
+
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
+        assert!(contains_label(result, "feature", "Runtime functions"));
+        assert!(result.contains(
+                "\"parameters\":[{\"name\":\"source\",\"value\":\"commons\",\"excluded\":null,\"mode\":null}]"
+            ));
+        assert!(
+            result.contains("{\"uuid\":null,\"name\":\"log from commons\",\"status\":\"passed\"")
+        );
+        assert!(result
+            .contains("{\"uuid\":null,\"name\":\"logged from commons\",\"status\":\"passed\""));
+        assert!(result
+            .contains("{\"uuid\":null,\"name\":\"attach from commons\",\"status\":\"passed\""));
+        assert!(result.contains("{\"uuid\":null,\"name\":\"commons.txt\",\"status\":\"passed\""));
+        assert!(result.contains("\"attachments\":[{\"name\":\"commons.txt\""));
+
+        let attachment_source =
+            json_string(result, "source").expect("attachment source should exist");
+        let attachment_path = results_dir.join(attachment_source);
+        let attachment_content =
+            fs::read_to_string(attachment_path).expect("attachment should exist");
+        assert_eq!(attachment_content, "attached from commons");
+    });
+}
+
+#[test]
+fn generates_allure_results_from_commons_test_runtime() {
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, results_dir, _project_dir) = run_sample_without_title_path("runtime", true);
+        let result = results
+            .get("uses_commons_test_runtime")
+            .expect("missing uses_commons_test_runtime result");
+
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
+        assert!(json_string(result, "fullName")
+            .is_some_and(|full_name| full_name.ends_with("uses_commons_test_runtime")));
+        assert!(contains_label(result, "feature", "Manual runtime"));
+        assert!(result.contains(
+                "\"parameters\":[{\"name\":\"style\",\"value\":\"no-macro\",\"excluded\":null,\"mode\":null}]"
+            ));
+        assert!(result
+            .contains("{\"uuid\":null,\"name\":\"log from manual runtime\",\"status\":\"passed\""));
+        assert!(result.contains(
+            "{\"uuid\":null,\"name\":\"logged from manual runtime\",\"status\":\"passed\""
+        ));
+        assert!(result.contains(
+            "{\"uuid\":null,\"name\":\"attach from manual runtime\",\"status\":\"passed\""
+        ));
+        assert!(result.contains("{\"uuid\":null,\"name\":\"runtime.txt\",\"status\":\"passed\""));
+        assert!(result.contains("\"attachments\":[{\"name\":\"runtime.txt\""));
+
+        let attachment_source =
+            json_string(result, "source").expect("attachment source should exist");
+        let attachment_path = results_dir.join(attachment_source);
+        let attachment_content =
+            fs::read_to_string(attachment_path).expect("attachment should exist");
+        assert_eq!(attachment_content, "attached from manual runtime");
+    });
 }
 
 #[test]
 fn generates_allure_results_for_steps_sample() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_steps_sample",
-        || {
-            let (results, results_dir, _project_dir) = run_sample("steps", true);
-            let result = results
-                .get("writes_steps")
-                .expect("missing writes_steps result");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, results_dir, _project_dir) = run_sample("steps", true);
+        let result = results
+            .get("writes_steps")
+            .expect("missing writes_steps result");
 
-            assert_has_allure_result_fields(result);
-            assert_eq!(json_string(result, "status"), Some("passed"));
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
 
-            assert!(result.contains(
-                "\"steps\":[{\"uuid\":null,\"name\":\"simple step\",\"status\":\"passed\""
-            ));
-            assert!(
-                result.contains("{\"uuid\":null,\"name\":\"logged step\",\"status\":\"passed\"")
-            );
-            assert!(result.contains(
-                "{\"uuid\":null,\"name\":\"some_step_doing_something\",\"status\":\"passed\""
-            ));
-            assert!(result
-                .contains("{\"uuid\":null,\"name\":\"Readable step title\",\"status\":\"passed\""));
-            assert!(
-                result.contains("{\"uuid\":null,\"name\":\"failed step\",\"status\":\"failed\"")
-            );
-            assert!(result.contains("\"statusDetails\":{\"message\":\"step failed\""));
-            assert!(
-                result.contains("{\"uuid\":null,\"name\":\"broken parent\",\"status\":\"broken\"")
-            );
-            assert!(result.contains("\"statusDetails\":{\"message\":\"step broken\""));
-            assert!(result.contains(
-                "\"steps\":[{\"uuid\":null,\"name\":\"nested child\",\"status\":\"passed\""
-            ));
-            assert!(result.contains("\"attachments\":[{\"name\":\"nested.txt\""));
+        assert!(result
+            .contains("\"steps\":[{\"uuid\":null,\"name\":\"simple step\",\"status\":\"passed\""));
+        assert!(result.contains("{\"uuid\":null,\"name\":\"logged step\",\"status\":\"passed\""));
+        assert!(result.contains(
+            "{\"uuid\":null,\"name\":\"some_step_doing_something\",\"status\":\"passed\""
+        ));
+        assert!(result
+            .contains("{\"uuid\":null,\"name\":\"Readable step title\",\"status\":\"passed\""));
+        assert!(result.contains("{\"uuid\":null,\"name\":\"failed step\",\"status\":\"failed\""));
+        assert!(result.contains("\"statusDetails\":{\"message\":\"step failed\""));
+        assert!(result.contains("{\"uuid\":null,\"name\":\"broken step\",\"status\":\"broken\""));
+        assert!(result.contains("\"statusDetails\":{\"message\":\"step broken\""));
+        assert!(result.contains("{\"uuid\":null,\"name\":\"nested parent\",\"status\":\"passed\""));
+        assert!(result.contains("{\"uuid\":null,\"name\":\"nested child\",\"status\":\"passed\""));
+        assert!(result.contains("\"attachments\":[{\"name\":\"nested.txt\""));
 
-            let attachment_source = result
-                .split("\"name\":\"nested.txt\",\"source\":\"")
-                .nth(1)
-                .and_then(|tail| tail.split('"').next())
-                .expect("nested step attachment source should exist");
+        let attachment_source = result
+            .split("\"name\":\"nested.txt\",\"source\":\"")
+            .nth(1)
+            .and_then(|tail| tail.split('"').next())
+            .expect("nested step attachment source should exist");
 
-            let attachment_content = fs::read_to_string(results_dir.join(attachment_source))
-                .expect("nested attachment should exist");
-            assert_eq!(attachment_content, "inside nested step");
-        },
-    );
+        let attachment_content = fs::read_to_string(results_dir.join(attachment_source))
+            .expect("nested attachment should exist");
+        assert_eq!(attachment_content, "inside nested step");
+    });
 }
 
 #[test]
 fn generates_allure_results_for_tokio_async_tests() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_tokio_async_tests",
-        || {
-            let (results, results_dir, _project_dir) = run_sample("tokio_async", true);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, results_dir, _project_dir) = run_sample("tokio_async", true);
 
-            let current_thread = results
-                .get("Async custom name")
-                .expect("missing Async custom name result");
-            assert_has_allure_result_fields(current_thread);
-            assert_eq!(json_string(current_thread, "status"), Some("passed"));
-            assert_eq!(
-                json_string(current_thread, "fullName"),
-                Some("allure::writes_tokio_async_metadata")
-            );
-            assert!(contains_label(current_thread, "ALLURE_ID", "ASYNC-1"));
-            assert!(contains_label(
-                current_thread,
-                "component",
-                "tokio-current-thread"
-            ));
-            assert!(current_thread.contains(
+        let current_thread = results
+            .get("Async custom name")
+            .expect("missing Async custom name result");
+        assert_has_allure_result_fields(current_thread);
+        assert_eq!(json_string(current_thread, "status"), Some("passed"));
+        assert_eq!(
+            json_string(current_thread, "fullName"),
+            Some("allure::writes_tokio_async_metadata")
+        );
+        assert!(contains_label(current_thread, "ALLURE_ID", "ASYNC-1"));
+        assert!(contains_label(
+            current_thread,
+            "component",
+            "tokio-current-thread"
+        ));
+        assert!(current_thread.contains(
             "\"parameters\":[{\"name\":\"phase\",\"value\":\"after-await\",\"excluded\":null,\"mode\":null}]"
         ));
-            assert!(current_thread.contains(
-                "\"steps\":[{\"uuid\":null,\"name\":\"async helper step\",\"status\":\"passed\""
-            ));
-            assert!(current_thread.contains("\"attachments\":[{\"name\":\"async.txt\""));
+        assert!(current_thread.contains(
+            "\"steps\":[{\"uuid\":null,\"name\":\"async helper step\",\"status\":\"passed\""
+        ));
+        assert!(current_thread.contains("\"attachments\":[{\"name\":\"async.txt\""));
 
-            let attachment_source = json_string(current_thread, "source")
-                .expect("async attachment source should exist");
-            let attachment_content = fs::read_to_string(results_dir.join(attachment_source))
-                .expect("async attachment should exist");
-            assert_eq!(attachment_content, "hello from async test");
+        let attachment_source =
+            json_string(current_thread, "source").expect("async attachment source should exist");
+        let attachment_content = fs::read_to_string(results_dir.join(attachment_source))
+            .expect("async attachment should exist");
+        assert_eq!(attachment_content, "hello from async test");
 
-            let multi_thread = results
-                .get("writes_tokio_multi_thread_metadata_after_await")
-                .expect("missing writes_tokio_multi_thread_metadata_after_await result");
-            assert_has_allure_result_fields(multi_thread);
-            assert_eq!(json_string(multi_thread, "status"), Some("passed"));
-            assert!(contains_label(
-                multi_thread,
-                "component",
-                "tokio-multi-thread"
-            ));
-            assert!(multi_thread.contains(
-                "\"steps\":[{\"uuid\":null,\"name\":\"direct async step\",\"status\":\"passed\""
-            ));
-            assert!(multi_thread
-                .contains("{\"uuid\":null,\"name\":\"async helper step\",\"status\":\"passed\""));
-        },
-    );
+        let multi_thread = results
+            .get("writes_tokio_multi_thread_metadata_after_await")
+            .expect("missing writes_tokio_multi_thread_metadata_after_await result");
+        assert_has_allure_result_fields(multi_thread);
+        assert_eq!(json_string(multi_thread, "status"), Some("passed"));
+        assert!(contains_label(
+            multi_thread,
+            "component",
+            "tokio-multi-thread"
+        ));
+        assert!(multi_thread.contains(
+            "\"steps\":[{\"uuid\":null,\"name\":\"direct async stage\",\"status\":\"passed\""
+        ));
+        assert!(multi_thread
+            .contains("{\"uuid\":null,\"name\":\"async helper step\",\"status\":\"passed\""));
+    });
 }
 
 #[test]
 fn generates_allure_results_for_failing_tests() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_failing_tests",
-        || {
-            let (results, _, _project_dir) = run_sample("failing", false);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("failing", false);
 
-            let passing = results
-                .get("still_writes_passed")
-                .expect("missing still_writes_passed result");
-            assert_has_allure_result_fields(passing);
-            assert_eq!(json_string(passing, "status"), Some("passed"));
+        let passing = results
+            .get("still_writes_passed")
+            .expect("missing still_writes_passed result");
+        assert_has_allure_result_fields(passing);
+        assert_eq!(json_string(passing, "status"), Some("passed"));
 
-            let failing = results
-                .get("fails_with_message")
-                .expect("missing fails_with_message result");
-            assert_has_allure_result_fields(failing);
-            assert_eq!(json_string(failing, "status"), Some("failed"));
-            assert_eq!(
-                json_string(failing, "message"),
-                Some("expected failure from sample")
-            );
-        },
-    );
+        let failing = results
+            .get("fails_with_message")
+            .expect("missing fails_with_message result");
+        assert_has_allure_result_fields(failing);
+        assert_eq!(json_string(failing, "status"), Some("failed"));
+        assert_eq!(
+            json_string(failing, "message"),
+            Some("expected failure from sample")
+        );
+    });
+}
+
+#[test]
+fn generates_assertion_steps_by_default() {
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("assertions", false);
+
+        let passing = results
+            .get("logs_passing_assertions")
+            .expect("missing logs_passing_assertions result");
+        assert_has_allure_result_fields(passing);
+        assert_eq!(json_string(passing, "status"), Some("passed"));
+        assert!(passing.contains("\"name\":\"assert!(true)\",\"status\":\"passed\""));
+        assert!(passing.contains("assert_eq!"));
+        assert!(passing.contains("assert_ne!"));
+        assert!(passing.contains("\"name\":\"step_assertions_are_nested\""));
+        assert!(passing.contains("\"name\":\"assert_eq!(1 + 1, 2)\""));
+
+        let failing = results
+            .get("logs_failed_assertion_details")
+            .expect("missing logs_failed_assertion_details result");
+        assert_has_allure_result_fields(failing);
+        assert_eq!(json_string(failing, "status"), Some("failed"));
+        assert!(failing.contains("\"name\":\"assert_eq!"));
+        assert!(failing.contains("\"status\":\"failed\""));
+        assert!(failing.contains(r#""actual":"\"actual\"""#));
+        assert!(failing.contains(r#""expected":"\"expected\"""#));
+    });
+}
+
+#[test]
+fn disables_assertion_steps_with_environment_override() {
+    allure::test(|| {
+        allure::stage("execute test body");
+        let mut envs = HashMap::new();
+        envs.insert("ALLURE_LOG_ASSERTS", "false");
+        let (results, _, _project_dir) = run_sample_with_env("assertions", false, &envs);
+
+        let passing = results
+            .get("logs_passing_assertions")
+            .expect("missing logs_passing_assertions result");
+        assert_has_allure_result_fields(passing);
+        assert_eq!(json_string(passing, "status"), Some("passed"));
+        assert!(!passing.contains("\"name\":\"assert!(true)\""));
+        assert!(!passing.contains("\"name\":\"assert_eq!"));
+        assert!(!passing.contains("\"name\":\"assert_ne!"));
+
+        let failing = results
+            .get("logs_failed_assertion_details")
+            .expect("missing logs_failed_assertion_details result");
+        assert_has_allure_result_fields(failing);
+        assert_eq!(json_string(failing, "status"), Some("failed"));
+        assert!(!failing.contains("\"name\":\"assert_eq!"));
+        assert!(!failing.contains(r#""actual":"\"actual\"""#));
+        assert!(!failing.contains(r#""expected":"\"expected\"""#));
+    });
 }
 
 #[test]
 fn generates_allure_results_for_should_panic_tests() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_should_panic_tests",
-        || {
-            let (results, _, _project_dir) = run_sample("should_panic", false);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("should_panic", false);
 
-            let should_panic_without_expected_passes = results
-                .get("should_panic_without_expected_passes")
-                .expect("missing should_panic_without_expected_passes result");
-            assert_has_allure_result_fields(should_panic_without_expected_passes);
-            assert_eq!(
-                json_string(should_panic_without_expected_passes, "status"),
-                Some("passed")
-            );
+        let should_panic_without_expected_passes = results
+            .get("should_panic_without_expected_passes")
+            .expect("missing should_panic_without_expected_passes result");
+        assert_has_allure_result_fields(should_panic_without_expected_passes);
+        assert_eq!(
+            json_string(should_panic_without_expected_passes, "status"),
+            Some("passed")
+        );
 
-            let should_panic_with_expected_passes = results
-                .get("should_panic_with_expected_passes")
-                .expect("missing should_panic_with_expected_passes result");
-            assert_has_allure_result_fields(should_panic_with_expected_passes);
-            assert_eq!(
-                json_string(should_panic_with_expected_passes, "status"),
-                Some("passed")
-            );
+        let should_panic_with_expected_passes = results
+            .get("should_panic_with_expected_passes")
+            .expect("missing should_panic_with_expected_passes result");
+        assert_has_allure_result_fields(should_panic_with_expected_passes);
+        assert_eq!(
+            json_string(should_panic_with_expected_passes, "status"),
+            Some("passed")
+        );
 
-            let should_panic_with_expected_mismatch_fails = results
-                .get("should_panic_with_expected_mismatch_fails")
-                .expect("missing should_panic_with_expected_mismatch_fails result");
-            assert_has_allure_result_fields(should_panic_with_expected_mismatch_fails);
-            assert_eq!(
-                json_string(should_panic_with_expected_mismatch_fails, "status"),
-                Some("failed")
-            );
-            assert!(should_panic_with_expected_mismatch_fails
-                .contains("panic message mismatch: expected substring"));
-            assert!(should_panic_with_expected_mismatch_fails.contains("needle"));
-            assert!(should_panic_with_expected_mismatch_fails.contains("different panic message"));
+        let should_panic_with_expected_mismatch_fails = results
+            .get("should_panic_with_expected_mismatch_fails")
+            .expect("missing should_panic_with_expected_mismatch_fails result");
+        assert_has_allure_result_fields(should_panic_with_expected_mismatch_fails);
+        assert_eq!(
+            json_string(should_panic_with_expected_mismatch_fails, "status"),
+            Some("failed")
+        );
+        assert!(should_panic_with_expected_mismatch_fails
+            .contains("panic message mismatch: expected substring"));
+        assert!(should_panic_with_expected_mismatch_fails.contains("needle"));
+        assert!(should_panic_with_expected_mismatch_fails.contains("different panic message"));
 
-            let should_panic_without_panic_fails = results
-                .get("should_panic_without_panic_fails")
-                .expect("missing should_panic_without_panic_fails result");
-            assert_has_allure_result_fields(should_panic_without_panic_fails);
-            assert_eq!(
-                json_string(should_panic_without_panic_fails, "status"),
-                Some("failed")
-            );
-            assert_eq!(
-                json_string(should_panic_without_panic_fails, "message"),
-                Some("expected panic but none occurred")
-            );
-        },
-    );
+        let should_panic_without_panic_fails = results
+            .get("should_panic_without_panic_fails")
+            .expect("missing should_panic_without_panic_fails result");
+        assert_has_allure_result_fields(should_panic_without_panic_fails);
+        assert_eq!(
+            json_string(should_panic_without_panic_fails, "status"),
+            Some("failed")
+        );
+        assert_eq!(
+            json_string(should_panic_without_panic_fails, "message"),
+            Some("expected panic but none occurred")
+        );
+    });
 }
 
 #[test]
 fn generates_allure_results_for_tokio_async_should_panic_tests() {
-    allure_test(
-        module_path!(),
-        "generates_allure_results_for_tokio_async_should_panic_tests",
-        || {
-            let (results, _, _project_dir) = run_sample("tokio_async_should_panic", false);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("tokio_async_should_panic", false);
 
-            let without_expected = results
-                .get("tokio_should_panic_without_expected_passes")
-                .expect("missing tokio_should_panic_without_expected_passes result");
-            assert_has_allure_result_fields(without_expected);
-            assert_eq!(json_string(without_expected, "status"), Some("passed"));
+        let without_expected = results
+            .get("tokio_should_panic_without_expected_passes")
+            .expect("missing tokio_should_panic_without_expected_passes result");
+        assert_has_allure_result_fields(without_expected);
+        assert_eq!(json_string(without_expected, "status"), Some("passed"));
 
-            let with_expected = results
-                .get("tokio_should_panic_with_expected_passes")
-                .expect("missing tokio_should_panic_with_expected_passes result");
-            assert_has_allure_result_fields(with_expected);
-            assert_eq!(json_string(with_expected, "status"), Some("passed"));
+        let with_expected = results
+            .get("tokio_should_panic_with_expected_passes")
+            .expect("missing tokio_should_panic_with_expected_passes result");
+        assert_has_allure_result_fields(with_expected);
+        assert_eq!(json_string(with_expected, "status"), Some("passed"));
 
-            let expected_mismatch = results
-                .get("tokio_should_panic_with_expected_mismatch_fails")
-                .expect("missing tokio_should_panic_with_expected_mismatch_fails result");
-            assert_has_allure_result_fields(expected_mismatch);
-            assert_eq!(json_string(expected_mismatch, "status"), Some("failed"));
-            assert!(expected_mismatch.contains("panic message mismatch: expected substring"));
-            assert!(expected_mismatch.contains("needle"));
-            assert!(expected_mismatch.contains("different async panic message"));
+        let expected_mismatch = results
+            .get("tokio_should_panic_with_expected_mismatch_fails")
+            .expect("missing tokio_should_panic_with_expected_mismatch_fails result");
+        assert_has_allure_result_fields(expected_mismatch);
+        assert_eq!(json_string(expected_mismatch, "status"), Some("failed"));
+        assert!(expected_mismatch.contains("panic message mismatch: expected substring"));
+        assert!(expected_mismatch.contains("needle"));
+        assert!(expected_mismatch.contains("different async panic message"));
 
-            let without_panic = results
-                .get("tokio_should_panic_without_panic_fails")
-                .expect("missing tokio_should_panic_without_panic_fails result");
-            assert_has_allure_result_fields(without_panic);
-            assert_eq!(json_string(without_panic, "status"), Some("failed"));
-            assert_eq!(
-                json_string(without_panic, "message"),
-                Some("expected panic but none occurred")
-            );
-        },
-    );
+        let without_panic = results
+            .get("tokio_should_panic_without_panic_fails")
+            .expect("missing tokio_should_panic_without_panic_fails result");
+        assert_has_allure_result_fields(without_panic);
+        assert_eq!(json_string(without_panic, "status"), Some("failed"));
+        assert_eq!(
+            json_string(without_panic, "message"),
+            Some("expected panic but none occurred")
+        );
+    });
 }
 
 #[test]
 fn generates_default_runtime_labels() {
-    allure_test(module_path!(), "generates_default_runtime_labels", || {
+    allure::test(|| {
+        allure::stage("execute test body");
         let (results, _, _project_dir) = run_sample("default_and_global_labels", true);
         let result = results
             .get("writes_default_and_global_labels")
@@ -460,190 +541,162 @@ fn generates_default_runtime_labels() {
 
 #[test]
 fn generates_global_labels_and_runtime_overrides() {
-    allure_test(
-        module_path!(),
-        "generates_global_labels_and_runtime_overrides",
-        || {
-            let mut envs = HashMap::new();
-            envs.insert("ALLURE_LABEL_component", "checkout");
-            envs.insert("allure.label.layer", "e2e");
-            envs.insert("ALLURE_HOST_NAME", "ci-host");
-            envs.insert("ALLURE_THREAD_NAME", "worker-7");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let mut envs = HashMap::new();
+        envs.insert("ALLURE_LABEL_component", "checkout");
+        envs.insert("allure.label.layer", "e2e");
+        envs.insert("ALLURE_HOST_NAME", "ci-host");
+        envs.insert("ALLURE_THREAD_NAME", "worker-7");
 
-            let (results, _, _project_dir) =
-                run_sample_with_env("default_and_global_labels", true, &envs);
-            let result = results
-                .get("writes_default_and_global_labels")
-                .expect("missing writes_default_and_global_labels result");
+        let (results, _, _project_dir) =
+            run_sample_with_env("default_and_global_labels", true, &envs);
+        let result = results
+            .get("writes_default_and_global_labels")
+            .expect("missing writes_default_and_global_labels result");
 
-            assert_has_allure_result_fields(result);
-            assert_eq!(json_string(result, "status"), Some("passed"));
+        assert_has_allure_result_fields(result);
+        assert_eq!(json_string(result, "status"), Some("passed"));
 
-            assert!(contains_label(result, "host", "ci-host"));
-            assert!(contains_label(result, "thread", "worker-7"));
-            assert!(contains_label(result, "component", "checkout"));
-            assert!(contains_label(result, "layer", "e2e"));
-        },
-    );
+        assert!(contains_label(result, "host", "ci-host"));
+        assert!(contains_label(result, "thread", "worker-7"));
+        assert!(contains_label(result, "component", "checkout"));
+        assert!(contains_label(result, "layer", "e2e"));
+    });
 }
 
 #[test]
 fn selective_run_when_test_selected_by_name() {
-    allure_test(
-        module_path!(),
-        "selective_run_when_test_selected_by_name",
-        || {
-            let testplan = r#"{"version":"1.0","tests":[{"selector":"allure::selected_by_name"}]}"#;
-            let (results, _, _project_dir) =
-                run_sample_with_testplan("selective", Some(testplan), true);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let testplan = r#"{"version":"1.0","tests":[{"selector":"allure::selected_by_name"}]}"#;
+        let (results, _, _project_dir) =
+            run_sample_with_testplan("selective", Some(testplan), true);
 
-            assert_eq!(results.len(), 1);
-            assert!(results.contains_key("selected_by_name"));
-        },
-    );
+        assert_eq!(results.len(), 1);
+        assert!(results.contains_key("selected_by_name"));
+    });
 }
 
 #[test]
 fn selective_run_does_not_match_partial_selector_name() {
-    allure_test(
-        module_path!(),
-        "selective_run_does_not_match_partial_selector_name",
-        || {
-            let testplan = r#"{"version":"1.0","tests":[{"selector":"selected_by_name"}]}"#;
-            let (results, _, _project_dir) =
-                run_sample_with_testplan("selective", Some(testplan), true);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let testplan = r#"{"version":"1.0","tests":[{"selector":"selected_by_name"}]}"#;
+        let (results, _, _project_dir) =
+            run_sample_with_testplan("selective", Some(testplan), true);
 
-            assert!(results.is_empty());
-        },
-    );
+        assert!(results.is_empty());
+    });
 }
 
 #[test]
 fn generates_allure_id_label_from_macro_attribute() {
-    allure_test(
-        module_path!(),
-        "generates_allure_id_label_from_macro_attribute",
-        || {
-            let (results, _, _project_dir) = run_sample("selective", true);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("selective", true);
 
-            let result = results
-                .get("selected_by_id")
-                .expect("missing selected_by_id result");
-            assert!(contains_label(result, "ALLURE_ID", "A-2"));
-        },
-    );
+        let result = results
+            .get("selected_by_id")
+            .expect("missing selected_by_id result");
+        assert!(contains_label(result, "ALLURE_ID", "A-2"));
+    });
 }
 
 #[test]
 fn selective_run_when_multiple_tests_selected() {
-    allure_test(
-        module_path!(),
-        "selective_run_when_multiple_tests_selected",
-        || {
-            let testplan = r#"{"version":"1.0","tests":[{"selector":"allure::selected_by_name"},{"id":"A-2"}]}"#;
-            let (results, _, _project_dir) =
-                run_sample_with_testplan("selective", Some(testplan), true);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let testplan =
+            r#"{"version":"1.0","tests":[{"selector":"allure::selected_by_name"},{"id":"A-2"}]}"#;
+        let (results, _, _project_dir) =
+            run_sample_with_testplan("selective", Some(testplan), true);
 
-            assert_eq!(results.len(), 1);
-            assert!(results.contains_key("selected_by_name"));
-        },
-    );
+        assert_eq!(results.len(), 1);
+        assert!(results.contains_key("selected_by_name"));
+    });
 }
 
 #[test]
 fn selective_run_when_no_tests_selected() {
-    allure_test(
-        module_path!(),
-        "selective_run_when_no_tests_selected",
-        || {
-            let testplan = r#"{"version":"1.0","tests":[{"selector":"missing::test"}]}"#;
-            let (results, _, _project_dir) =
-                run_sample_with_testplan("selective", Some(testplan), true);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let testplan = r#"{"version":"1.0","tests":[{"selector":"missing::test"}]}"#;
+        let (results, _, _project_dir) =
+            run_sample_with_testplan("selective", Some(testplan), true);
 
-            assert!(results.is_empty());
-        },
-    );
+        assert!(results.is_empty());
+    });
 }
 
 #[test]
 fn selective_run_with_malformed_testplan() {
-    allure_test(
-        module_path!(),
-        "selective_run_with_malformed_testplan",
-        || {
-            let (results, _, _project_dir) =
-                run_sample_with_testplan("selective", Some("not json"), true);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) =
+            run_sample_with_testplan("selective", Some("not json"), true);
 
-            assert_eq!(results.len(), 3);
-            assert!(results.contains_key("selected_by_name"));
-            assert!(results.contains_key("selected_by_id"));
-            assert!(results.contains_key("selected_extra"));
-        },
-    );
+        assert_eq!(results.len(), 3);
+        assert!(results.contains_key("selected_by_name"));
+        assert!(results.contains_key("selected_by_id"));
+        assert!(results.contains_key("selected_extra"));
+    });
 }
 
 #[test]
 fn selective_run_with_missing_testplan_file_and_env_var() {
-    allure_test(
-        module_path!(),
-        "selective_run_with_missing_testplan_file_and_env_var",
-        || {
-            let mut envs = HashMap::new();
-            envs.insert(
-                "ALLURE_TESTPLAN_PATH",
-                "/tmp/allure-missing-testplan-does-not-exist.json",
-            );
+    allure::test(|| {
+        allure::stage("execute test body");
+        let mut envs = HashMap::new();
+        envs.insert(
+            "ALLURE_TESTPLAN_PATH",
+            "/tmp/allure-missing-testplan-does-not-exist.json",
+        );
 
-            let (results, _, _project_dir) =
-                run_sample_with_env_allow_empty("selective", true, &envs);
+        let (results, _, _project_dir) = run_sample_with_env_allow_empty("selective", true, &envs);
 
-            assert_eq!(results.len(), 3);
-            assert!(results.contains_key("selected_by_name"));
-            assert!(results.contains_key("selected_by_id"));
-            assert!(results.contains_key("selected_extra"));
-        },
-    );
+        assert_eq!(results.len(), 3);
+        assert!(results.contains_key("selected_by_name"));
+        assert!(results.contains_key("selected_by_id"));
+        assert!(results.contains_key("selected_extra"));
+    });
 }
 
 #[test]
 fn keeps_metadata_linked_to_the_right_test_when_running_concurrently() {
-    allure_test(
-        module_path!(),
-        "keeps_metadata_linked_to_the_right_test_when_running_concurrently",
-        || {
-            let mut envs = HashMap::new();
-            envs.insert("RUST_TEST_THREADS", "2");
+    allure::test(|| {
+        allure::stage("execute test body");
+        let mut envs = HashMap::new();
+        envs.insert("RUST_TEST_THREADS", "2");
 
-            let (results, _, _project_dir) =
-                run_sample_with_env("concurrent_metadata", true, &envs);
+        let (results, _, _project_dir) = run_sample_with_env("concurrent_metadata", true, &envs);
 
-            let first = results
-                .get("metadata_for_first_test_stays_isolated")
-                .expect("missing metadata_for_first_test_stays_isolated result");
-            assert_has_allure_result_fields(first);
-            assert!(contains_label(first, "component", "alpha"));
-            assert!(first.contains(
+        let first = results
+            .get("metadata_for_first_test_stays_isolated")
+            .expect("missing metadata_for_first_test_stays_isolated result");
+        assert_has_allure_result_fields(first);
+        assert!(contains_label(first, "component", "alpha"));
+        assert!(first.contains(
             "\"parameters\":[{\"name\":\"case\",\"value\":\"alpha\",\"excluded\":null,\"mode\":null}]"
         ));
-            assert!(first.contains("\"url\":\"https://example.test/alpha\""));
-            assert!(!contains_label(first, "component", "beta"));
-            assert!(!first.contains("\"value\":\"beta\""));
-            assert!(!first.contains("https://example.test/beta"));
+        assert!(first.contains("\"url\":\"https://example.test/alpha\""));
+        assert!(!contains_label(first, "component", "beta"));
+        assert!(!first.contains("\"value\":\"beta\""));
+        assert!(!first.contains("https://example.test/beta"));
 
-            let second = results
-                .get("metadata_for_second_test_stays_isolated")
-                .expect("missing metadata_for_second_test_stays_isolated result");
-            assert_has_allure_result_fields(second);
-            assert!(contains_label(second, "component", "beta"));
-            assert!(second.contains(
+        let second = results
+            .get("metadata_for_second_test_stays_isolated")
+            .expect("missing metadata_for_second_test_stays_isolated result");
+        assert_has_allure_result_fields(second);
+        assert!(contains_label(second, "component", "beta"));
+        assert!(second.contains(
             "\"parameters\":[{\"name\":\"case\",\"value\":\"beta\",\"excluded\":null,\"mode\":null}]"
         ));
-            assert!(second.contains("\"url\":\"https://example.test/beta\""));
-            assert!(!contains_label(second, "component", "alpha"));
-            assert!(!second.contains("\"value\":\"alpha\""));
-            assert!(!second.contains("https://example.test/alpha"));
-        },
-    );
+        assert!(second.contains("\"url\":\"https://example.test/beta\""));
+        assert!(!contains_label(second, "component", "alpha"));
+        assert!(!second.contains("\"value\":\"alpha\""));
+        assert!(!second.contains("https://example.test/alpha"));
+    });
 }
 
 fn run_sample_with_testplan(
@@ -692,36 +745,33 @@ fn run_sample_with_testplan(
 
 #[test]
 fn generates_test_case_id_and_runtime_override() {
-    allure_test(
-        module_path!(),
-        "generates_test_case_id_and_runtime_override",
-        || {
-            let (results, _, _project_dir) = run_sample("identifiers", true);
+    allure::test(|| {
+        allure::stage("execute test body");
+        let (results, _, _project_dir) = run_sample("identifiers", true);
 
-            let generated = results
-                .get("computes_test_case_id_from_full_name")
-                .expect("missing computes_test_case_id_from_full_name result");
-            assert_has_allure_result_fields(generated);
-            assert_eq!(json_string(generated, "status"), Some("passed"));
+        let generated = results
+            .get("computes_test_case_id_from_full_name")
+            .expect("missing computes_test_case_id_from_full_name result");
+        assert_has_allure_result_fields(generated);
+        assert_eq!(json_string(generated, "status"), Some("passed"));
 
-            let full_name = json_string(generated, "fullName").expect("fullName should exist");
-            let expected_test_case_id = md5_hex(full_name);
-            assert_eq!(
-                json_string(generated, "testCaseId"),
-                Some(expected_test_case_id.as_str())
-            );
+        let full_name = json_string(generated, "fullName").expect("fullName should exist");
+        let expected_test_case_id = md5_hex(full_name);
+        assert_eq!(
+            json_string(generated, "testCaseId"),
+            Some(expected_test_case_id.as_str())
+        );
 
-            let overridden = results
-                .get("allows_runtime_override_for_test_case_id")
-                .expect("missing allows_runtime_override_for_test_case_id result");
-            assert_has_allure_result_fields(overridden);
-            assert_eq!(json_string(overridden, "status"), Some("passed"));
-            assert_eq!(
-                json_string(overridden, "testCaseId"),
-                Some("runtime-overridden-test-case-id")
-            );
-        },
-    );
+        let overridden = results
+            .get("allows_runtime_override_for_test_case_id")
+            .expect("missing allows_runtime_override_for_test_case_id result");
+        assert_has_allure_result_fields(overridden);
+        assert_eq!(json_string(overridden, "status"), Some("passed"));
+        assert_eq!(
+            json_string(overridden, "testCaseId"),
+            Some("runtime-overridden-test-case-id")
+        );
+    });
 }
 
 fn run_sample(
@@ -731,10 +781,40 @@ fn run_sample(
     run_sample_with_env(sample_name, expect_success, &HashMap::new())
 }
 
+fn run_sample_without_title_path(
+    sample_name: &str,
+    expect_success: bool,
+) -> (HashMap<String, String>, PathBuf, TempProjectDir) {
+    let (results, results_dir, project_dir) =
+        run_sample_with_env_and_title_path(sample_name, expect_success, &HashMap::new(), None);
+
+    assert!(
+        !results.is_empty(),
+        "no result files found in {}",
+        results_dir.display()
+    );
+
+    (results, results_dir, project_dir)
+}
+
 fn run_sample_with_env_allow_empty(
     sample_name: &str,
     expect_success: bool,
     envs: &HashMap<&str, &str>,
+) -> (HashMap<String, String>, PathBuf, TempProjectDir) {
+    run_sample_with_env_and_title_path(
+        sample_name,
+        expect_success,
+        envs,
+        Some(&["tests", "allure.rs"][..]),
+    )
+}
+
+fn run_sample_with_env_and_title_path(
+    sample_name: &str,
+    expect_success: bool,
+    envs: &HashMap<&str, &str>,
+    expected_title_path: Option<&[&str]>,
 ) -> (HashMap<String, String>, PathBuf, TempProjectDir) {
     let project_dir = prepare_sample_project(sample_name);
     let results_dir = project_dir.path().join("allure-results");
@@ -753,8 +833,16 @@ fn run_sample_with_env_allow_empty(
         );
     }
 
+    assert!(
+        results_dir.exists(),
+        "no result files found for {sample_name}; stdout: {}; stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     let results = read_results_by_test_name_allow_empty(&results_dir);
-    assert_results_title_path(&results, &["tests", "allure.rs"]);
+    if let Some(expected_title_path) = expected_title_path {
+        assert_results_title_path(&results, expected_title_path);
+    }
 
     (results, results_dir, project_dir)
 }
@@ -809,8 +897,9 @@ fn prepare_sample_project(sample_name: &str) -> TempProjectDir {
     } else {
         ""
     };
-
     let allure_cargotest_path = toml_string(&repo_root.join("crates").join("allure-cargotest"));
+    let allure_rust_commons_path =
+        toml_string(&repo_root.join("crates").join("allure-rust-commons"));
     let cargo_toml = format!(
         r#"[package]
 name = "allure-cargotest-sample-{}"
@@ -821,6 +910,7 @@ edition = "2021"
 
 [dependencies]
 allure-cargotest = {{ path = {} }}
+allure-rust-commons = {{ path = {} }}
 {}
 
 [package.metadata.allure.labels]
@@ -834,7 +924,11 @@ labels = {{ component = "sample-fixture", a = "a-value", b = ["b-value1", "b-val
 module = "allure"
 labels = {{ layer = "module-config" }}
 "#,
-        sample_name, allure_cargotest_path, extra_dependencies, sample_name
+        sample_name,
+        allure_cargotest_path,
+        allure_rust_commons_path,
+        extra_dependencies,
+        sample_name
     );
     fs::write(project_dir.path().join("Cargo.toml"), cargo_toml)
         .expect("sample Cargo.toml should be generated");
@@ -886,6 +980,10 @@ fn run_cargo_test(
 fn read_results_by_test_name_allow_empty(results_dir: &Path) -> HashMap<String, String> {
     let mut parsed = HashMap::new();
     let mut result_files = Vec::new();
+
+    if !results_dir.exists() {
+        return parsed;
+    }
 
     for entry in fs::read_dir(results_dir).expect("results dir should exist") {
         let entry = entry.expect("entry should be readable");

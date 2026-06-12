@@ -1,12 +1,17 @@
+//! Helpers for mapping Rust panic messages to Allure statuses.
+
 use std::any::Any;
 
 use crate::model::{Status, StatusDetails};
 
+/// Classifies an error message as `failed` for assertion-like failures or `broken` otherwise.
 pub fn get_status_from_error(message: &str) -> Status {
     let lowercase = message.to_ascii_lowercase();
     if lowercase.contains("assertion")
         || lowercase.contains("assert")
         || lowercase.contains("comparison failed")
+        || lowercase.contains("expected panic")
+        || lowercase.contains("panic message mismatch")
     {
         Status::Failed
     } else {
@@ -14,6 +19,7 @@ pub fn get_status_from_error(message: &str) -> Status {
     }
 }
 
+/// Classifies a message into an Allure status and status details.
 pub fn classify_message(message: impl Into<String>) -> (Status, StatusDetails) {
     let message = message.into();
     (
@@ -27,6 +33,7 @@ pub fn classify_message(message: impl Into<String>) -> (Status, StatusDetails) {
     )
 }
 
+/// Classifies a Rust panic payload into an Allure status and status details.
 pub fn classify_panic(payload: &Box<dyn Any + Send>) -> (Status, StatusDetails) {
     let message = if let Some(message) = payload.downcast_ref::<&str>() {
         (*message).to_string()

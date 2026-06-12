@@ -5,14 +5,18 @@ const TESTPLAN_ENV_VAR: &str = "ALLURE_TESTPLAN_PATH";
 /// Allure test plan parsed from `ALLURE_TESTPLAN_PATH`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestPlan {
+    /// Optional test plan version.
     pub version: Option<String>,
+    /// Entries included in the plan.
     pub tests: Vec<TestPlanEntry>,
 }
 
 /// Minimal test entry shape used for matching test execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestPlanEntry {
+    /// Optional Allure ID.
     pub id: Option<String>,
+    /// Optional framework selector.
     pub selector: Option<String>,
 }
 

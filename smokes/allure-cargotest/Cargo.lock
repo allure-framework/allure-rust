@@ -15,6 +15,7 @@ name = "allure-cargotest-smoke"
 version = "0.0.0"
 dependencies = [
  "allure-cargotest",
+ "allure-rust-commons",
 ]
 
 [[package]]
