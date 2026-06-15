@@ -43,7 +43,15 @@ pub mod __private {
         FileSystemResultsWriter, Future, Pin, Poll, ReporterError, StatusDetails, TestPlan,
     };
 
-    pub use allure_rust_commons::{test_with, test_with_async, TestOptions};
+    pub use allure_rust_commons::facade::{
+        finish_runtime_test_panic, finish_runtime_test_status, push_runtime_test_allure,
+        run_runtime_test_future, start_runtime_test_with_options, AllureOutcomeProbe,
+        AllureOutcomeReport, FinishAllureOutcome, RuntimeTest,
+    };
+    pub use allure_rust_commons::{
+        test_with, test_with_async, test_with_outcome, test_with_outcome_async, AllureTestOutcome,
+        TestOptions,
+    };
 
     pub fn push_current_allure(allure: &AllureFacade) -> CurrentAllureGuard {
         common_push_current_allure(allure)

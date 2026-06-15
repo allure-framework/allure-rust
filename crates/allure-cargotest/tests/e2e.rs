@@ -379,6 +379,202 @@ fn generates_allure_results_for_failing_tests() {
 #[allure_cargotest::allure_test]
 #[test]
 #[allure_cargotest::log_asserts]
+fn generates_allure_results_for_result_returning_tests() {
+    allure::description(
+        "Verifies Result-returning tests propagate Cargo failures and report non-panic errors to Allure.",
+    );
+    let (results, _, _project_dir) = run_sample("result_return", false);
+
+    let passing = results
+        .get("returns_ok_query_result")
+        .expect("missing returns_ok_query_result result");
+    assert_has_allure_result_fields(passing);
+    assert_eq!(json_string(passing, "status"), Some("passed"));
+
+    let failing = results
+        .get("returns_err_query_result")
+        .expect("missing returns_err_query_result result");
+    assert_has_allure_result_fields(failing);
+    assert_eq!(json_string(failing, "status"), Some("broken"));
+    assert_eq!(
+        json_string(failing, "message"),
+        Some("SampleDbError: simulated database write failed")
+    );
+}
+
+#[allure_cargotest::allure_test]
+#[test]
+#[allure_cargotest::log_asserts]
+fn result_returning_tests_respect_testplan_filtering() {
+    allure::description(
+        "Verifies filtered Result-returning tests return a successful value and emit no result.",
+    );
+    let testplan = r#"{"version":"1.0","tests":[{"selector":"missing::result_test"}]}"#;
+    let (results, _, _project_dir) =
+        run_sample_with_testplan("result_return", Some(testplan), true);
+
+    assert!(results.is_empty());
+}
+
+#[allure_cargotest::allure_test]
+#[test]
+#[allure_cargotest::log_asserts]
+fn generates_allure_results_for_tokio_async_result_returning_tests() {
+    allure::description(
+        "Verifies async Result-returning tests preserve Cargo and Allure failure semantics.",
+    );
+    let (results, _, _project_dir) = run_sample("tokio_async_results", false);
+
+    let passing = results
+        .get("returns_ok_async_result")
+        .expect("missing returns_ok_async_result result");
+    assert_has_allure_result_fields(passing);
+    assert_eq!(json_string(passing, "status"), Some("passed"));
+
+    let failing = results
+        .get("returns_err_async_result")
+        .expect("missing returns_err_async_result result");
+    assert_has_allure_result_fields(failing);
+    assert_eq!(json_string(failing, "status"), Some("broken"));
+    assert_eq!(
+        json_string(failing, "message"),
+        Some("AsyncSampleError: simulated async database write failed")
+    );
+}
+
+#[allure_cargotest::allure_test]
+#[test]
+#[allure_cargotest::log_asserts]
+fn generates_allure_results_for_termination_returning_tests() {
+    allure::description(
+        "Verifies ExitCode, custom Termination, and opaque impl Termination tests report before Cargo interprets the return value.",
+    );
+    let (results, _, _project_dir) = run_sample("termination_return", false);
+
+    let exit_code_success = results
+        .get("returns_exit_code_success")
+        .expect("missing returns_exit_code_success result");
+    assert_has_allure_result_fields(exit_code_success);
+    assert_eq!(json_string(exit_code_success, "status"), Some("passed"));
+
+    let exit_code_failure = results
+        .get("returns_exit_code_failure")
+        .expect("missing returns_exit_code_failure result");
+    assert_has_allure_result_fields(exit_code_failure);
+    assert_eq!(json_string(exit_code_failure, "status"), Some("broken"));
+    assert_eq!(
+        json_string(exit_code_failure, "message"),
+        Some("test returned unsuccessful ExitCode")
+    );
+
+    let custom_success = results
+        .get("returns_custom_termination_success")
+        .expect("missing returns_custom_termination_success result");
+    assert_has_allure_result_fields(custom_success);
+    assert_eq!(json_string(custom_success, "status"), Some("passed"));
+
+    let custom_failure = results
+        .get("returns_custom_termination_failure")
+        .expect("missing returns_custom_termination_failure result");
+    assert_has_allure_result_fields(custom_failure);
+    assert_eq!(json_string(custom_failure, "status"), Some("broken"));
+    assert_eq!(
+        json_string(custom_failure, "message"),
+        Some("test returned unsuccessful Termination status")
+    );
+
+    let opaque_success = results
+        .get("returns_impl_termination_success")
+        .expect("missing returns_impl_termination_success result");
+    assert_has_allure_result_fields(opaque_success);
+    assert_eq!(json_string(opaque_success, "status"), Some("passed"));
+
+    let opaque_failure = results
+        .get("returns_impl_termination_failure")
+        .expect("missing returns_impl_termination_failure result");
+    assert_has_allure_result_fields(opaque_failure);
+    assert_eq!(json_string(opaque_failure, "status"), Some("broken"));
+    assert_eq!(
+        json_string(opaque_failure, "message"),
+        Some("test returned unsuccessful Termination status")
+    );
+}
+
+#[allure_cargotest::allure_test]
+#[test]
+#[allure_cargotest::log_asserts]
+fn termination_returning_tests_respect_testplan_filtering() {
+    allure::description(
+        "Verifies filtered Termination-returning tests return success and emit no result.",
+    );
+    let testplan = r#"{"version":"1.0","tests":[{"selector":"missing::termination_test"}]}"#;
+    let (results, _, _project_dir) =
+        run_sample_with_testplan("termination_return", Some(testplan), true);
+
+    assert!(results.is_empty());
+}
+
+#[allure_cargotest::allure_test]
+#[test]
+#[allure_cargotest::log_asserts]
+fn generates_allure_results_for_tokio_async_termination_returning_tests() {
+    allure::description(
+        "Verifies async ExitCode and custom Termination tests preserve Cargo and Allure failure semantics.",
+    );
+    let (results, _, _project_dir) = run_sample("tokio_async_termination", false);
+
+    let exit_code_success = results
+        .get("returns_async_exit_code_success")
+        .expect("missing returns_async_exit_code_success result");
+    assert_has_allure_result_fields(exit_code_success);
+    assert_eq!(json_string(exit_code_success, "status"), Some("passed"));
+
+    let exit_code_failure = results
+        .get("returns_async_exit_code_failure")
+        .expect("missing returns_async_exit_code_failure result");
+    assert_has_allure_result_fields(exit_code_failure);
+    assert_eq!(json_string(exit_code_failure, "status"), Some("broken"));
+    assert_eq!(
+        json_string(exit_code_failure, "message"),
+        Some("test returned unsuccessful ExitCode")
+    );
+
+    let custom_success = results
+        .get("returns_async_custom_termination_success")
+        .expect("missing returns_async_custom_termination_success result");
+    assert_has_allure_result_fields(custom_success);
+    assert_eq!(json_string(custom_success, "status"), Some("passed"));
+
+    let custom_failure = results
+        .get("returns_async_custom_termination_failure")
+        .expect("missing returns_async_custom_termination_failure result");
+    assert_has_allure_result_fields(custom_failure);
+    assert_eq!(json_string(custom_failure, "status"), Some("broken"));
+    assert_eq!(
+        json_string(custom_failure, "message"),
+        Some("test returned unsuccessful Termination status")
+    );
+
+    let opaque_success = results
+        .get("returns_async_impl_termination_success")
+        .expect("missing returns_async_impl_termination_success result");
+    assert_has_allure_result_fields(opaque_success);
+    assert_eq!(json_string(opaque_success, "status"), Some("passed"));
+
+    let opaque_failure = results
+        .get("returns_async_impl_termination_failure")
+        .expect("missing returns_async_impl_termination_failure result");
+    assert_has_allure_result_fields(opaque_failure);
+    assert_eq!(json_string(opaque_failure, "status"), Some("broken"));
+    assert_eq!(
+        json_string(opaque_failure, "message"),
+        Some("test returned unsuccessful Termination status")
+    );
+}
+
+#[allure_cargotest::allure_test]
+#[test]
+#[allure_cargotest::log_asserts]
 fn generates_assertion_steps_by_default() {
     allure::description(
         "Verifies assertion logging is enabled by default and records passing and failing assertion details.",

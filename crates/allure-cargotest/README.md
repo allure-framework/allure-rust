@@ -48,6 +48,13 @@ The macro still provides an `allure` value in the test body for existing code. T
 above use the thread-bound current Allure context from `allure-rust-commons`, so the same style can
 also be used by other framework adapters that bind that context.
 
+`#[allure_test]` supports both ordinary `()` tests and explicit return types that implement
+`std::process::Termination`. This keeps fallible setup, database checks, and other `?`-based
+`Result<(), E>` code natural: returned `Err` values are reported to Allure and then returned to
+Cargo so the test still fails normally. `ExitCode`, custom `Termination`, and opaque
+`impl Termination` returns are also supported; unsuccessful custom termination values are reported
+with generic failure details.
+
 Runtime evidence helpers such as `attachment`, `attachment_path`, and `http_exchange` are recorded
 as ordered Allure steps by default. Adapter internals that need exact owner placement can use the
 `allure_rust_commons::reporter` module.
@@ -86,6 +93,8 @@ async fn login_works_async() {
 
 The root async test body and awaited helpers can use Allure metadata and steps. Independently
 spawned Tokio tasks do not implicitly inherit the current Allure context.
+Async tests may return `Result<(), E>`, `ExitCode`, custom `Termination`, or `impl Termination`
+values when the runtime-specific test macro supports them.
 
 ## Configure the output directory
 

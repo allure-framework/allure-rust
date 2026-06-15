@@ -23,6 +23,21 @@ struct StepAttrArgs {
     name: Option<String>,
 }
 
+#[derive(Debug)]
+struct ExplicitReturnType {
+    ty: String,
+    arrow_start: usize,
+    end: usize,
+    kind: ReturnTypeKind,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ReturnTypeKind {
+    Concrete,
+    Opaque,
+    Never,
+}
+
 #[proc_macro_attribute]
 /// Wraps a helper function body in an Allure step.
 ///
@@ -177,9 +192,14 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         return compile_error("failed to parse function body");
     };
 
-    if has_return_type(&tokens[fn_index..body_index]) {
+    let return_type = explicit_return_type(&tokens, fn_index, body_index);
+    if should_panic.enabled
+        && return_type
+            .as_ref()
+            .is_some_and(|return_type| !is_unit_return_type(&return_type.ty))
+    {
         return compile_error(
-            "#[allure_test] currently supports only test functions that return ()",
+            "#[allure_test] supports #[should_panic] only for tests that return ()",
         );
     }
 
@@ -190,32 +210,81 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     if should_panic.enabled {
         tokens = remove_should_panic_attrs(tokens);
     }
+    let fn_index = tokens
+        .iter()
+        .position(|t| matches!(t, TokenTree::Ident(id) if id.to_string() == "fn"));
+    let Some(fn_index) = fn_index else {
+        return compile_error("#[allure_test] can be applied only to functions");
+    };
     let body_index = tokens.iter().position(
         |t| matches!(t, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace),
     );
-    let Some(body_index) = body_index else {
+    let Some(mut body_index) = body_index else {
         return compile_error("failed to parse function body");
     };
+    let return_type = explicit_return_type(&tokens, fn_index, body_index);
 
     let test_name = attrs.name.unwrap_or(fn_name.clone());
+    let returns_termination_wrapper = return_type.is_some() && !should_panic.enabled;
+    let termination_wrapper_name =
+        returns_termination_wrapper.then(|| generated_termination_wrapper_name(&fn_name));
+    let test_return_type = return_type
+        .as_ref()
+        .map(|return_type| return_type.ty.as_str())
+        .unwrap_or("()");
+    let skipped_return = if returns_termination_wrapper {
+        let wrapper_name = termination_wrapper_name
+            .as_ref()
+            .expect("termination wrapper name should be available");
+        format!("return {wrapper_name}::skipped();")
+    } else {
+        match return_type.as_ref() {
+            Some(return_type) => format!(
+                "return <{} as ::allure_cargotest::__private::AllureTestOutcome>::successful();",
+                return_type.ty
+            ),
+            None => "return;".to_string(),
+        }
+    };
     let allure_id_option = match attrs.id.as_ref() {
         Some(id) => format!(".with_allure_id({id:?})"),
         None => String::new(),
     };
+
+    if returns_termination_wrapper {
+        let Some(return_type) = &return_type else {
+            return compile_error("failed to parse function return type");
+        };
+        let wrapper_name = termination_wrapper_name
+            .as_ref()
+            .expect("termination wrapper name should be available");
+        let replacement_src = format!("-> {wrapper_name}");
+        let replacement: Vec<TokenTree> = match replacement_src.parse::<TokenStream>() {
+            Ok(stream) => stream.into_iter().collect(),
+            Err(_) => return compile_error("failed to generate transformed test return type"),
+        };
+        tokens.splice(return_type.arrow_start..return_type.end, replacement);
+        body_index = tokens
+            .iter()
+            .position(
+                |t| matches!(t, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace),
+            )
+            .unwrap_or(body_index);
+    }
 
     let wrapped_body_src = if should_panic.enabled && is_async {
         format!(
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
   if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
-    return;
+    {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
     {allure_id_option};
-  ::allure_cargotest::__private::test_with_async(__allure_options, async move {{
+  return ::allure_cargotest::__private::test_with_outcome_async(__allure_options, async move {{
     let allure = ::allure_cargotest::__private::current_allure()
       .expect(\"allure context should be available\");
     let _ = &allure;
@@ -242,14 +311,14 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
   if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
-    return;
+    {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
     {allure_id_option};
-  ::allure_cargotest::__private::test_with(__allure_options, || {{
+  return ::allure_cargotest::__private::test_with_outcome(__allure_options, || -> () {{
     let allure = ::allure_cargotest::__private::current_allure()
       .expect(\"allure context should be available\");
     let _ = &allure;
@@ -271,24 +340,86 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
 }}",
             expected_panic_check(&should_panic.expected)
         )
-    } else if is_async {
+    } else if returns_termination_wrapper && is_async {
+        let Some(return_type) = &return_type else {
+            return compile_error("failed to parse function return type");
+        };
+        let wrapper_name = termination_wrapper_name
+            .as_ref()
+            .expect("termination wrapper name should be available");
+        let async_output_src = termination_async_output_src(return_type, &original_body);
         format!(
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
   if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
-    return;
+    {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
     {allure_id_option};
-  ::allure_cargotest::__private::test_with_async(__allure_options, async move {{
-    let allure = ::allure_cargotest::__private::current_allure()
-      .expect(\"allure context should be available\");
-    let _ = &allure;
-    {original_body}
+  let __allure_runtime_test = ::allure_cargotest::__private::start_runtime_test_with_options(__allure_options);
+  let __allure_result = ::allure_cargotest::__private::run_runtime_test_future(
+    &__allure_runtime_test,
+    async move {{
+      {async_output_src}
+    }},
+  ).await;
+  match __allure_result {{
+    Ok(__allure_value) => return {wrapper_name}::completed(__allure_runtime_test, __allure_value),
+    Err(__allure_payload) => ::allure_cargotest::__private::finish_runtime_test_panic(__allure_runtime_test, __allure_payload),
+  }}
+}}"
+        )
+    } else if is_async {
+        format!(
+            "{{
+  let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
+  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
+    {skipped_return}
+  }}
+  let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
+    .with_full_name(__allure_full_name.clone())
+    .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
+    .with_panic_status(::allure_cargotest::Status::Failed)
+    {allure_id_option};
+  return ::allure_cargotest::__private::test_with_outcome_async(__allure_options, async move {{
+    let __allure_output: {test_return_type} = {{
+      let allure = ::allure_cargotest::__private::current_allure()
+        .expect(\"allure context should be available\");
+      let _ = &allure;
+      {original_body}
+    }};
+    __allure_output
   }}).await;
+}}"
+        )
+    } else if returns_termination_wrapper {
+        let Some(return_type) = &return_type else {
+            return compile_error("failed to parse function return type");
+        };
+        let wrapper_name = termination_wrapper_name
+            .as_ref()
+            .expect("termination wrapper name should be available");
+        let sync_closure_src = termination_sync_closure_src(return_type, &original_body);
+        format!(
+            "{{
+  let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
+  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
+    {skipped_return}
+  }}
+  let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
+    .with_full_name(__allure_full_name.clone())
+    .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
+    .with_panic_status(::allure_cargotest::Status::Failed)
+    {allure_id_option};
+  let __allure_runtime_test = ::allure_cargotest::__private::start_runtime_test_with_options(__allure_options);
+  let __allure_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe({sync_closure_src}));
+  match __allure_result {{
+    Ok(__allure_value) => return {wrapper_name}::completed(__allure_runtime_test, __allure_value),
+    Err(__allure_payload) => ::allure_cargotest::__private::finish_runtime_test_panic(__allure_runtime_test, __allure_payload),
+  }}
 }}"
         )
     } else {
@@ -296,14 +427,14 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
   if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
-    return;
+    {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
     {allure_id_option};
-  ::allure_cargotest::__private::test_with(__allure_options, || {{
+  return ::allure_cargotest::__private::test_with_outcome(__allure_options, || -> {test_return_type} {{
     let allure = ::allure_cargotest::__private::current_allure()
       .expect(\"allure context should be available\");
     let _ = &allure;
@@ -324,7 +455,24 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
 
     tokens[body_index] = TokenTree::Group(Group::new(Delimiter::Brace, wrapped_group.stream()));
 
-    TokenStream::from_iter(tokens)
+    let mut output = TokenStream::new();
+    if returns_termination_wrapper {
+        let Some(return_type) = &return_type else {
+            return compile_error("failed to parse function return type");
+        };
+        let wrapper_name = termination_wrapper_name
+            .as_ref()
+            .expect("termination wrapper name should be available");
+        let wrapper_stream: TokenStream = match termination_wrapper_src(return_type, wrapper_name)
+            .parse()
+        {
+            Ok(stream) => stream,
+            Err(_) => return compile_error("failed to generate transformed test return wrapper"),
+        };
+        output.extend(wrapper_stream);
+    }
+    output.extend(TokenStream::from_iter(tokens));
+    output
 }
 
 fn parse_should_panic_config(tokens: &[TokenTree]) -> ShouldPanicConfig {
@@ -443,15 +591,315 @@ fn expected_panic_check(expected: &Option<String>) -> String {
     }
 }
 
-fn has_return_type(tokens: &[TokenTree]) -> bool {
-    for window in tokens.windows(2) {
-        if let [TokenTree::Punct(first), TokenTree::Punct(second)] = window {
+fn generated_termination_wrapper_name(fn_name: &str) -> String {
+    let mut sanitized = fn_name.strip_prefix("r#").unwrap_or(fn_name).to_string();
+    sanitized.retain(|ch| ch == '_' || ch.is_ascii_alphanumeric());
+    format!("__AllureTerminationResult_{sanitized}")
+}
+
+fn termination_wrapper_src(return_type: &ExplicitReturnType, wrapper_name: &str) -> String {
+    match return_type.kind {
+        ReturnTypeKind::Concrete => concrete_termination_wrapper_src(&return_type.ty, wrapper_name),
+        ReturnTypeKind::Opaque => boxed_termination_wrapper_src(wrapper_name),
+        ReturnTypeKind::Never => never_termination_wrapper_src(wrapper_name),
+    }
+}
+
+fn concrete_termination_wrapper_src(return_type: &str, wrapper_name: &str) -> String {
+    format!(
+        r#"
+#[allow(non_camel_case_types)]
+struct {wrapper_name} {{
+  __allure_runtime_test: Option<::allure_cargotest::__private::RuntimeTest>,
+  __allure_value: Option<{return_type}>,
+}}
+
+impl {wrapper_name} {{
+  fn skipped() -> Self {{
+    Self {{
+      __allure_runtime_test: None,
+      __allure_value: None,
+    }}
+  }}
+
+  fn completed(
+    __allure_runtime_test: ::allure_cargotest::__private::RuntimeTest,
+    __allure_value: {return_type},
+  ) -> Self {{
+    Self {{
+      __allure_runtime_test: Some(__allure_runtime_test),
+      __allure_value: Some(__allure_value),
+    }}
+  }}
+}}
+
+impl ::std::process::Termination for {wrapper_name} {{
+  fn report(mut self) -> ::std::process::ExitCode {{
+    let Some(__allure_runtime_test) = self.__allure_runtime_test.take() else {{
+      return ::std::process::ExitCode::SUCCESS;
+    }};
+    let Some(__allure_value) = self.__allure_value.take() else {{
+      return ::std::process::ExitCode::SUCCESS;
+    }};
+    use ::allure_cargotest::__private::FinishAllureOutcome as _;
+    let mut __allure_probe = ::allure_cargotest::__private::AllureOutcomeProbe::new(__allure_value);
+    let __allure_report = match __allure_probe.finish_allure_outcome() {{
+      Ok(__allure_report) => __allure_report,
+      Err(__allure_payload) => {{
+        ::allure_cargotest::__private::finish_runtime_test_panic(
+          __allure_runtime_test,
+          __allure_payload,
+        );
+      }}
+    }};
+    ::allure_cargotest::__private::finish_runtime_test_status(
+      __allure_runtime_test,
+      __allure_report.status,
+      __allure_report.details,
+    );
+    __allure_report.exit_code
+  }}
+}}
+"#
+    )
+}
+
+fn boxed_termination_wrapper_src(wrapper_name: &str) -> String {
+    let boxed_trait_name = format!("{wrapper_name}_BoxedTermination");
+    r#"
+#[allow(non_camel_case_types)]
+struct __ALLURE_WRAPPER_NAME__ {
+  __allure_runtime_test: Option<::allure_cargotest::__private::RuntimeTest>,
+  __allure_value: Option<Box<dyn __ALLURE_BOXED_TRAIT_NAME__>>,
+}
+
+#[allow(non_camel_case_types)]
+trait __ALLURE_BOXED_TRAIT_NAME__ {
+  fn __allure_finish(
+    self: Box<Self>,
+  ) -> ::std::thread::Result<::allure_cargotest::__private::AllureOutcomeReport>;
+}
+
+impl<R> __ALLURE_BOXED_TRAIT_NAME__ for R
+where
+  R: ::std::process::Termination + 'static,
+{
+  fn __allure_finish(
+    self: Box<Self>,
+  ) -> ::std::thread::Result<::allure_cargotest::__private::AllureOutcomeReport> {
+    let __allure_exit_code =
+      ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| (*self).report()))?;
+    let (__allure_status, __allure_details) =
+      if __allure_exit_code == ::std::process::ExitCode::SUCCESS {
+        (::allure_cargotest::Status::Passed, None)
+      } else {
+        (
+          ::allure_cargotest::Status::Broken,
+          Some(::allure_cargotest::__private::status_details_for_message(
+            "test returned unsuccessful Termination status".to_string(),
+          )),
+        )
+      };
+    Ok(::allure_cargotest::__private::AllureOutcomeReport {
+      exit_code: __allure_exit_code,
+      status: __allure_status,
+      details: __allure_details,
+    })
+  }
+}
+
+impl __ALLURE_WRAPPER_NAME__ {
+  fn skipped() -> Self {
+    Self {
+      __allure_runtime_test: None,
+      __allure_value: None,
+    }
+  }
+
+  fn completed<R>(
+    __allure_runtime_test: ::allure_cargotest::__private::RuntimeTest,
+    __allure_value: R,
+  ) -> Self
+  where
+    R: ::std::process::Termination + 'static,
+  {
+    Self {
+      __allure_runtime_test: Some(__allure_runtime_test),
+      __allure_value: Some(Box::new(__allure_value)),
+    }
+  }
+}
+
+impl ::std::process::Termination for __ALLURE_WRAPPER_NAME__ {
+  fn report(mut self) -> ::std::process::ExitCode {
+    let Some(__allure_runtime_test) = self.__allure_runtime_test.take() else {
+      return ::std::process::ExitCode::SUCCESS;
+    };
+    let Some(__allure_value) = self.__allure_value.take() else {
+      return ::std::process::ExitCode::SUCCESS;
+    };
+    let __allure_report = match __allure_value.__allure_finish() {
+      Ok(__allure_report) => __allure_report,
+      Err(__allure_payload) => {
+        ::allure_cargotest::__private::finish_runtime_test_panic(
+          __allure_runtime_test,
+          __allure_payload,
+        );
+      }
+    };
+    ::allure_cargotest::__private::finish_runtime_test_status(
+      __allure_runtime_test,
+      __allure_report.status,
+      __allure_report.details,
+    );
+    __allure_report.exit_code
+  }
+}
+"#
+    .replace("__ALLURE_WRAPPER_NAME__", wrapper_name)
+    .replace("__ALLURE_BOXED_TRAIT_NAME__", &boxed_trait_name)
+}
+
+fn never_termination_wrapper_src(wrapper_name: &str) -> String {
+    r#"
+#[allow(non_camel_case_types)]
+struct __ALLURE_WRAPPER_NAME__ {
+  __allure_runtime_test: Option<::allure_cargotest::__private::RuntimeTest>,
+}
+
+impl __ALLURE_WRAPPER_NAME__ {
+  fn skipped() -> Self {
+    Self {
+      __allure_runtime_test: None,
+    }
+  }
+
+  fn completed(
+    __allure_runtime_test: ::allure_cargotest::__private::RuntimeTest,
+    _completed: (),
+  ) -> Self {
+    Self {
+      __allure_runtime_test: Some(__allure_runtime_test),
+    }
+  }
+}
+
+impl ::std::process::Termination for __ALLURE_WRAPPER_NAME__ {
+  fn report(mut self) -> ::std::process::ExitCode {
+    let Some(__allure_runtime_test) = self.__allure_runtime_test.take() else {
+      return ::std::process::ExitCode::SUCCESS;
+    };
+    ::allure_cargotest::__private::finish_runtime_test_status(
+      __allure_runtime_test,
+      ::allure_cargotest::Status::Broken,
+      Some(::allure_cargotest::__private::status_details_for_message(
+        "never-returning test completed".to_string(),
+      )),
+    );
+    ::std::process::ExitCode::FAILURE
+  }
+}
+"#
+    .replace("__ALLURE_WRAPPER_NAME__", wrapper_name)
+}
+
+fn termination_sync_closure_src(return_type: &ExplicitReturnType, original_body: &str) -> String {
+    let body = format!(
+        "let _current_allure = ::allure_cargotest::__private::push_runtime_test_allure(&__allure_runtime_test);
+    let allure = ::allure_cargotest::__private::current_allure()
+      .expect(\"allure context should be available\");
+    let _ = &allure;
+    {original_body}"
+    );
+
+    match return_type.kind {
+        ReturnTypeKind::Concrete => format!("|| -> {} {{ {body} }}", return_type.ty),
+        ReturnTypeKind::Opaque => format!("|| {{ {body} }}"),
+        ReturnTypeKind::Never => format!("|| {{ {body}; }}"),
+    }
+}
+
+fn termination_async_output_src(return_type: &ExplicitReturnType, original_body: &str) -> String {
+    let body = format!(
+        "let allure = ::allure_cargotest::__private::current_allure()
+        .expect(\"allure context should be available\");
+      let _ = &allure;
+      {original_body}"
+    );
+
+    match return_type.kind {
+        ReturnTypeKind::Concrete => format!(
+            "let __allure_output: {} = {{ {body} }};
+      __allure_output",
+            return_type.ty
+        ),
+        ReturnTypeKind::Opaque => format!(
+            "let __allure_output = {{ {body} }};
+      __allure_output"
+        ),
+        ReturnTypeKind::Never => format!("{{ {body}; }}"),
+    }
+}
+
+fn explicit_return_type(
+    tokens: &[TokenTree],
+    fn_index: usize,
+    body_index: usize,
+) -> Option<ExplicitReturnType> {
+    for index in fn_index..body_index.saturating_sub(1) {
+        if let [TokenTree::Punct(first), TokenTree::Punct(second)] = &tokens[index..index + 2] {
             if first.as_char() == '-' && second.as_char() == '>' {
-                return true;
+                let start = index + 2;
+                let end = tokens[start..]
+                    .iter()
+                    .position(|token| {
+                        matches!(token, TokenTree::Ident(ident) if ident.to_string() == "where")
+                    })
+                    .map_or(body_index, |offset| start + offset);
+
+                let return_tokens = &tokens[start..end];
+                let ty = TokenStream::from_iter(return_tokens.iter().cloned()).to_string();
+                let kind = return_type_kind(return_tokens, &ty);
+
+                return Some(ExplicitReturnType {
+                    ty,
+                    arrow_start: index,
+                    end,
+                    kind,
+                });
             }
         }
     }
-    false
+    None
+}
+
+fn return_type_kind(tokens: &[TokenTree], return_type: &str) -> ReturnTypeKind {
+    if is_never_return_type(return_type) {
+        ReturnTypeKind::Never
+    } else if matches!(
+        tokens.first(),
+        Some(TokenTree::Ident(ident)) if ident.to_string() == "impl"
+    ) {
+        ReturnTypeKind::Opaque
+    } else {
+        ReturnTypeKind::Concrete
+    }
+}
+
+fn is_unit_return_type(return_type: &str) -> bool {
+    return_type
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        == "()"
+}
+
+fn is_never_return_type(return_type: &str) -> bool {
+    return_type
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        == "!"
 }
 
 fn compile_error(message: &str) -> TokenStream {
