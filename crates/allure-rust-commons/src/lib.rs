@@ -42,8 +42,8 @@ pub use facade::{
     parameter_mode, parameter_with_options, parent_suite, push_current_allure,
     record_assertion_pass, set_title_path, severity, stage, status_details_for_message, step,
     story, sub_suite, suite, tag, tags, test, test_async, test_case_id, test_named,
-    test_named_async, test_with, test_with_async, tms, AllureFacade, CurrentAllureGuard,
-    TestOptions,
+    test_named_async, test_with, test_with_async, test_with_outcome, test_with_outcome_async, tms,
+    AllureFacade, AllureTestOutcome, CurrentAllureGuard, TestOptions,
 };
 pub use http_exchange::*;
 pub use lifecycle::{AllureLifecycle, AllureRuntime, StartTestCaseParams};

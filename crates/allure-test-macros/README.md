@@ -45,6 +45,10 @@ fn login_works() {
 
 - `#[allure_test]` supports synchronous `#[test]` functions and root async tests that compose with
   runtime-specific attributes such as `#[tokio::test]`.
+- `#[allure_test]` supports test functions returning `()` or explicit types that implement
+  `std::process::Termination`, including `Result<(), E>`, `ExitCode`, custom `Termination`, and
+  opaque `impl Termination` return values. Result errors and unsuccessful exit codes are reported
+  before the test harness interprets the result.
 - For Tokio tests, add Tokio to your test crate and place `#[allure_test]` above `#[tokio::test]`.
 - Allure context is available in the root async test body and awaited helpers, but independently
   spawned tasks do not implicitly inherit it.

@@ -118,6 +118,10 @@ fn open_login_page() {
 
 The `#[allure_test]` attribute initializes a reporter automatically (using
 `ALLURE_RESULTS_DIR` or `target/allure-results`) and wraps the test lifecycle.
+It supports ordinary `()` tests and explicit return types that implement
+`std::process::Termination`, including Rust-style `Result<(), E>`, `ExitCode`, and custom
+termination types. Returned `Err` values and unsuccessful `ExitCode` values are written to Allure
+before Cargo interprets the result.
 
 For environments where attribute macros are not allowed, use the macro-free runtime from commons:
 
@@ -152,6 +156,8 @@ async fn async_test_with_allure() {
 
 Allure context is available in the root async test body and awaited helpers. Implicit propagation
 into independently spawned tasks is not guaranteed.
+Async tests may also return `Result<(), E>`, `ExitCode`, custom `Termination`, or
+`impl Termination` values when the runtime-specific test macro supports them.
 
 `#[allure_test]` also derives synthetic suite labels from the Rust module path when a full
 name is available. A single module segment becomes `suite`; with two or more segments, the first

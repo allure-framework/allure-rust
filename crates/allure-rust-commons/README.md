@@ -98,6 +98,11 @@ when an adapter or helper can provide exact metadata such as full name, title pa
 module path, labels, or IDs. Async tests can use `test_async`, `test_named_async`, or
 `test_with_async`.
 
+Adapters that need Rust test-style outcome handling can use `test_with_outcome` or
+`test_with_outcome_async`. These wrappers report values implementing `AllureTestOutcome`, including
+`()`, nested `Result<T, E>` where `T` is also an Allure outcome, and `ExitCode`, while still
+returning the original value to the test harness.
+
 ## Runtime facade
 
 The thread-bound facade exports framework-neutral helpers for the common Allure concepts:

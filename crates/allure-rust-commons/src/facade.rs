@@ -1,12 +1,14 @@
 //! Framework-neutral high-level Allure runtime facade.
 
 use std::{
+    any::Any,
     cell::RefCell,
-    fs,
+    fmt, fs,
     future::Future,
     panic::{self, AssertUnwindSafe},
     path::Path,
     pin::Pin,
+    process::{ExitCode, Termination},
     sync::{
         atomic::{AtomicU64, Ordering},
         OnceLock,
@@ -284,6 +286,149 @@ impl From<StartTestCaseParams> for TestOptions {
     }
 }
 
+/// Reports a Rust test return value as an Allure outcome.
+///
+/// This mirrors the return shapes accepted by modern Rust test functions without consuming the
+/// value before the test harness receives it.
+pub trait AllureTestOutcome: Sized {
+    /// Returns a successful value used when the test is filtered out before execution.
+    fn successful() -> Self;
+
+    /// Returns the Allure status represented by this value.
+    fn status(&self) -> (Status, Option<StatusDetails>);
+}
+
+impl AllureTestOutcome for () {
+    fn successful() -> Self {}
+
+    fn status(&self) -> (Status, Option<StatusDetails>) {
+        (Status::Passed, None)
+    }
+}
+
+impl<T, E> AllureTestOutcome for Result<T, E>
+where
+    T: AllureTestOutcome,
+    E: fmt::Debug,
+{
+    fn successful() -> Self {
+        Ok(T::successful())
+    }
+
+    fn status(&self) -> (Status, Option<StatusDetails>) {
+        match self {
+            Ok(value) => value.status(),
+            Err(error) => {
+                let (status, details) = error_classifier::classify_message(format!("{error:?}"));
+                (status, Some(details))
+            }
+        }
+    }
+}
+
+impl AllureTestOutcome for ExitCode {
+    fn successful() -> Self {
+        ExitCode::SUCCESS
+    }
+
+    fn status(&self) -> (Status, Option<StatusDetails>) {
+        if self == &ExitCode::SUCCESS {
+            (Status::Passed, None)
+        } else {
+            (
+                Status::Broken,
+                Some(status_details_for_message(
+                    "test returned unsuccessful ExitCode".to_string(),
+                )),
+            )
+        }
+    }
+}
+
+/// Outcome produced after interpreting a Rust test return value.
+#[doc(hidden)]
+pub struct AllureOutcomeReport {
+    /// Exit code that should be returned to Rust's test harness.
+    pub exit_code: ExitCode,
+    /// Allure status represented by the return value.
+    pub status: Status,
+    /// Optional status details represented by the return value.
+    pub details: Option<StatusDetails>,
+}
+
+/// Concrete return-value probe used by generated test wrappers.
+#[doc(hidden)]
+pub struct AllureOutcomeProbe<R> {
+    value: Option<R>,
+}
+
+impl<R> AllureOutcomeProbe<R> {
+    /// Creates a probe for a concrete Rust test return value.
+    pub fn new(value: R) -> Self {
+        Self { value: Some(value) }
+    }
+}
+
+/// Finishes an [`AllureOutcomeProbe`] using the most specific known outcome contract.
+#[doc(hidden)]
+pub trait FinishAllureOutcome {
+    /// Reports the probed value to Rust's test harness and returns the matching Allure outcome.
+    fn finish_allure_outcome(self) -> std::thread::Result<AllureOutcomeReport>;
+}
+
+impl<R> FinishAllureOutcome for AllureOutcomeProbe<R>
+where
+    R: AllureTestOutcome + Termination,
+{
+    fn finish_allure_outcome(mut self) -> std::thread::Result<AllureOutcomeReport> {
+        let (status, details) = self
+            .value
+            .as_ref()
+            .expect("allure outcome value should be available")
+            .status();
+        let value = self
+            .value
+            .take()
+            .expect("allure outcome value should be available");
+        let exit_code = panic::catch_unwind(AssertUnwindSafe(|| value.report()))?;
+
+        Ok(AllureOutcomeReport {
+            exit_code,
+            status,
+            details,
+        })
+    }
+}
+
+impl<R> FinishAllureOutcome for &mut AllureOutcomeProbe<R>
+where
+    R: Termination,
+{
+    fn finish_allure_outcome(self) -> std::thread::Result<AllureOutcomeReport> {
+        let value = self
+            .value
+            .take()
+            .expect("allure outcome value should be available");
+        let exit_code = panic::catch_unwind(AssertUnwindSafe(|| value.report()))?;
+        let (status, details) = if exit_code == ExitCode::SUCCESS {
+            (Status::Passed, None)
+        } else {
+            (
+                Status::Broken,
+                Some(status_details_for_message(
+                    "test returned unsuccessful Termination status".to_string(),
+                )),
+            )
+        };
+
+        Ok(AllureOutcomeReport {
+            exit_code,
+            status,
+            details,
+        })
+    }
+}
+
 /// Runs a synchronous test body with inferred Allure metadata.
 pub fn test<R, F>(body: F) -> R
 where
@@ -310,6 +455,18 @@ where
     let _current_allure = push_current_allure(&runtime_test.allure);
     let result = panic::catch_unwind(AssertUnwindSafe(body));
     finish_runtime_test(runtime_test, result)
+}
+
+/// Runs a synchronous test body and reports Result-like return values as Allure outcomes.
+pub fn test_with_outcome<R, F>(options: impl Into<TestOptions>, body: F) -> R
+where
+    R: AllureTestOutcome,
+    F: FnOnce() -> R,
+{
+    let runtime_test = start_runtime_test(options.into());
+    let _current_allure = push_current_allure(&runtime_test.allure);
+    let result = panic::catch_unwind(AssertUnwindSafe(body));
+    finish_runtime_test_with_outcome(runtime_test, result)
 }
 
 /// Runs an async test future with inferred Allure metadata.
@@ -343,7 +500,24 @@ where
     finish_runtime_test(runtime_test, result)
 }
 
-struct RuntimeTest {
+/// Runs an async test future and reports Result-like return values as Allure outcomes.
+pub async fn test_with_outcome_async<R, F>(options: impl Into<TestOptions>, future: F) -> R
+where
+    R: AllureTestOutcome,
+    F: Future<Output = R>,
+{
+    let runtime_test = start_runtime_test(options.into());
+    let result = RuntimeTestFuture {
+        allure: runtime_test.allure.clone(),
+        future: Box::pin(future),
+    }
+    .await;
+    finish_runtime_test_with_outcome(runtime_test, result)
+}
+
+/// In-progress runtime test state used by generated adapter code.
+#[doc(hidden)]
+pub struct RuntimeTest {
     allure: AllureFacade,
     panic_status: Option<Status>,
 }
@@ -387,21 +561,80 @@ fn start_runtime_test(options: TestOptions) -> RuntimeTest {
     }
 }
 
+/// Starts a runtime test with explicit options for generated adapter code.
+#[doc(hidden)]
+pub fn start_runtime_test_with_options(options: impl Into<TestOptions>) -> RuntimeTest {
+    start_runtime_test(options.into())
+}
+
+/// Pushes the current Allure context for generated adapter code.
+#[doc(hidden)]
+pub fn push_runtime_test_allure(runtime_test: &RuntimeTest) -> CurrentAllureGuard {
+    push_current_allure(&runtime_test.allure)
+}
+
+/// Polls a future with the runtime test's Allure context installed.
+#[doc(hidden)]
+pub async fn run_runtime_test_future<R, F>(
+    runtime_test: &RuntimeTest,
+    future: F,
+) -> std::thread::Result<R>
+where
+    F: Future<Output = R>,
+{
+    RuntimeTestFuture {
+        allure: runtime_test.allure.clone(),
+        future: Box::pin(future),
+    }
+    .await
+}
+
+/// Finishes a runtime test with an explicit status for generated adapter code.
+#[doc(hidden)]
+pub fn finish_runtime_test_status(
+    runtime_test: RuntimeTest,
+    status: Status,
+    details: Option<StatusDetails>,
+) {
+    runtime_test.allure.end_test(status, details);
+}
+
+/// Finishes a runtime test for a panic and resumes unwinding.
+#[doc(hidden)]
+pub fn finish_runtime_test_panic(runtime_test: RuntimeTest, payload: Box<dyn Any + Send>) -> ! {
+    let (status, details) = error_classifier::classify_panic(&payload);
+    let status = runtime_test.panic_status.unwrap_or(status);
+    let message = details.message.clone().unwrap_or_default();
+    runtime_test
+        .allure
+        .end_test(status, Some(status_details_for_message(message)));
+    panic::resume_unwind(payload);
+}
+
 fn finish_runtime_test<R>(runtime_test: RuntimeTest, result: std::thread::Result<R>) -> R {
     match result {
         Ok(value) => {
             runtime_test.allure.end_test(Status::Passed, None);
             value
         }
-        Err(payload) => {
-            let (status, details) = error_classifier::classify_panic(&payload);
-            let status = runtime_test.panic_status.unwrap_or(status);
-            let message = details.message.clone().unwrap_or_default();
-            runtime_test
-                .allure
-                .end_test(status, Some(status_details_for_message(message)));
-            panic::resume_unwind(payload);
+        Err(payload) => finish_runtime_test_panic(runtime_test, payload),
+    }
+}
+
+fn finish_runtime_test_with_outcome<R>(
+    runtime_test: RuntimeTest,
+    result: std::thread::Result<R>,
+) -> R
+where
+    R: AllureTestOutcome,
+{
+    match result {
+        Ok(value) => {
+            let (status, details) = value.status();
+            runtime_test.allure.end_test(status, details);
+            value
         }
+        Err(payload) => finish_runtime_test_panic(runtime_test, payload),
     }
 }
 
