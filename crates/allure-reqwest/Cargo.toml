@@ -31,5 +31,8 @@ allure-cargotest = { version = "1.1.0", path = "../allure-cargotest" }
 serde_json = "1"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread"] }
 
+[package.metadata.allure]
+log_asserts = false
+
 [package.metadata.allure.labels]
 module = "allure-reqwest"

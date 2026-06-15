@@ -10,6 +10,7 @@ fn some_step_with_custom_name() {}
 #[allure_test]
 #[test]
 fn writes_steps() {
+    allure.description("Verifies explicit steps, macro steps, status overrides, nested steps, and nested attachments.");
     allure.step("simple step", || {});
 
     allure.log_step("logged step");
