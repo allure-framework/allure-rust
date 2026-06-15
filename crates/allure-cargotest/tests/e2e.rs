@@ -736,16 +736,14 @@ fn run_sample_with_testplan(
     testplan_content: Option<&str>,
     expect_success: bool,
 ) -> (HashMap<String, String>, PathBuf, TempProjectDir) {
-    let project_dir = prepare_sample_project(sample_name);
+    let project_dir = prepare_sample_project_step(sample_name);
     let results_dir = project_dir.path().join("allure-results");
 
     let mut envs = HashMap::new();
     let mut plan_path = None;
 
     if let Some(content) = testplan_content {
-        let path = project_dir.path().join("testplan.json");
-        fs::write(&path, content).expect("test plan should be written");
-        attach_testplan_input(sample_name, content);
+        let path = write_sample_testplan(sample_name, project_dir.path(), content);
         plan_path = Some(path);
     }
 
@@ -756,8 +754,7 @@ fn run_sample_with_testplan(
         );
     }
 
-    let output = run_cargo_test(project_dir.path(), &results_dir, &envs);
-    attach_command_output(sample_name, &output);
+    let output = run_cargo_test(sample_name, project_dir.path(), &results_dir, &envs);
     if expect_success {
         assert!(
             output.status.success(),
@@ -771,8 +768,7 @@ fn run_sample_with_testplan(
         );
     }
 
-    let results = read_results_by_test_name_allow_empty(&results_dir);
-    attach_result_summary(sample_name, &results, &results_dir);
+    let results = read_sample_results(sample_name, &results_dir);
     assert_results_title_path(&results, &["tests", "allure.rs"]);
 
     (results, results_dir, project_dir)
@@ -853,11 +849,10 @@ fn run_sample_with_env_and_title_path(
     envs: &HashMap<&str, &str>,
     expected_title_path: Option<&[&str]>,
 ) -> (HashMap<String, String>, PathBuf, TempProjectDir) {
-    let project_dir = prepare_sample_project(sample_name);
+    let project_dir = prepare_sample_project_step(sample_name);
     let results_dir = project_dir.path().join("allure-results");
 
-    let output = run_cargo_test(project_dir.path(), &results_dir, envs);
-    attach_command_output(sample_name, &output);
+    let output = run_cargo_test(sample_name, project_dir.path(), &results_dir, envs);
     if expect_success {
         assert!(
             output.status.success(),
@@ -877,8 +872,7 @@ fn run_sample_with_env_and_title_path(
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let results = read_results_by_test_name_allow_empty(&results_dir);
-    attach_result_summary(sample_name, &results, &results_dir);
+    let results = read_sample_results(sample_name, &results_dir);
     if let Some(expected_title_path) = expected_title_path {
         assert_results_title_path(&results, expected_title_path);
     }
@@ -901,6 +895,12 @@ fn run_sample_with_env(
     );
 
     (results, results_dir, project_dir)
+}
+
+fn prepare_sample_project_step(sample_name: &str) -> TempProjectDir {
+    allure::step(format!("prepare {sample_name} sample project"), || {
+        prepare_sample_project(sample_name)
+    })
 }
 
 fn prepare_sample_project(sample_name: &str) -> TempProjectDir {
@@ -996,24 +996,38 @@ fn toml_string(path: &Path) -> String {
     output
 }
 
+fn write_sample_testplan(sample_name: &str, project_dir: &Path, content: &str) -> PathBuf {
+    allure::step(format!("write {sample_name} sample test plan"), || {
+        let path = project_dir.join("testplan.json");
+        fs::write(&path, content).expect("test plan should be written");
+        attach_testplan_input(sample_name, content);
+        path
+    })
+}
+
 fn run_cargo_test(
+    sample_name: &str,
     project_dir: &Path,
     results_dir: &Path,
     envs: &HashMap<&str, &str>,
 ) -> std::process::Output {
-    let mut command = Command::new("cargo");
-    command
-        .arg("test")
-        .arg("--")
-        .arg("--nocapture")
-        .env("ALLURE_RESULTS_DIR", results_dir)
-        .current_dir(project_dir);
+    allure::step(format!("run {sample_name} sample cargo test"), || {
+        let mut command = Command::new("cargo");
+        command
+            .arg("test")
+            .arg("--")
+            .arg("--nocapture")
+            .env("ALLURE_RESULTS_DIR", results_dir)
+            .current_dir(project_dir);
 
-    for (key, value) in envs {
-        command.env(key, value);
-    }
+        for (key, value) in envs {
+            command.env(key, value);
+        }
 
-    command.output().expect("cargo test should run")
+        let output = command.output().expect("cargo test should run");
+        attach_command_output(sample_name, &output);
+        output
+    })
 }
 
 fn attach_testplan_input(sample_name: &str, content: &str) {
@@ -1090,6 +1104,14 @@ fn attach_result_summary(sample_name: &str, results: &HashMap<String, String>, r
             raw.as_bytes(),
         );
     }
+}
+
+fn read_sample_results(sample_name: &str, results_dir: &Path) -> HashMap<String, String> {
+    allure::step(format!("read {sample_name} sample Allure results"), || {
+        let results = read_results_by_test_name_allow_empty(results_dir);
+        attach_result_summary(sample_name, &results, results_dir);
+        results
+    })
 }
 
 fn read_results_by_test_name_allow_empty(results_dir: &Path) -> HashMap<String, String> {

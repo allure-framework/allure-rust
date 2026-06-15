@@ -50,22 +50,33 @@ fn attach_testplan_result(case_name: &str, result: &Option<TestPlan>) {
     );
 }
 
+fn write_testplan_file(case_name: &str, path: &std::path::Path, input: &str) {
+    allure::step("write test-plan file", || {
+        attach_testplan_input(case_name, input);
+        fs::write(path, input).expect("write plan");
+    });
+}
+
 fn parse_test_plan_input(case_name: &str, input: &str) -> Option<TestPlan> {
-    attach_testplan_input(case_name, input);
-    let result = parse_test_plan(input);
-    attach_testplan_result(case_name, &result);
-    result
+    allure::step("parse test plan", || {
+        attach_testplan_input(case_name, input);
+        let result = parse_test_plan(input);
+        attach_testplan_result(case_name, &result);
+        result
+    })
 }
 
 fn load_test_plan_from_env(case_name: &str) -> Option<TestPlan> {
-    let env_value = env::var("ALLURE_TESTPLAN_PATH").unwrap_or_else(|_| "<unset>".to_string());
-    attach_text(
-        format!("{case_name} ALLURE_TESTPLAN_PATH"),
-        format!("ALLURE_TESTPLAN_PATH={env_value}"),
-    );
-    let result = TestPlan::from_env();
-    attach_testplan_result(case_name, &result);
-    result
+    allure::step("load test plan from ALLURE_TESTPLAN_PATH", || {
+        let env_value = env::var("ALLURE_TESTPLAN_PATH").unwrap_or_else(|_| "<unset>".to_string());
+        attach_text(
+            format!("{case_name} ALLURE_TESTPLAN_PATH"),
+            format!("ALLURE_TESTPLAN_PATH={env_value}"),
+        );
+        let result = TestPlan::from_env();
+        attach_testplan_result(case_name, &result);
+        result
+    })
 }
 
 #[crate::allure_test]
@@ -104,8 +115,7 @@ fn parses_plan_when_file_exists() {
     let _guard = lock_testplan_env();
     let path = temp_file_path();
     let input = r#"{"version":"1.0","tests":[{"id":"42"},{"selector":"suite::test_name"}]}"#;
-    attach_testplan_input("valid env file", input);
-    fs::write(&path, input).expect("write plan");
+    write_testplan_file("valid env file", &path, input);
 
     with_env_var(&path);
     let plan = load_test_plan_from_env("valid env file").expect("plan parsed");
@@ -126,8 +136,7 @@ fn returns_none_for_malformed_json() {
     let _guard = lock_testplan_env();
     let path = temp_file_path();
     let input = "not json";
-    attach_testplan_input("malformed env file", input);
-    fs::write(&path, input).expect("write invalid plan");
+    write_testplan_file("malformed env file", &path, input);
 
     with_env_var(&path);
     assert!(load_test_plan_from_env("malformed env file").is_none());

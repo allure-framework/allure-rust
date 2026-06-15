@@ -28,7 +28,6 @@ Do not store the exact Allure version here. Version output is a runtime fact; th
 - Latest/state directory recovery: `allure agent latest [--cwd <dir>]`, `allure agent state-dir [--cwd <dir>]`; `ALLURE_AGENT_STATE_DIR` can override state location
 - Selection/rerun support: `allure agent select`, `allure agent query`, `allure agent --rerun-latest`, and `allure agent --rerun-from <output-dir>` are supported
 - Discovery/configuration commands: agent discovery/configuration commands are unsupported; inspect Cargo, source, README files, and CI directly
-- Local agent test service: unsupported in this repository; use the CLI wrapper directly
 
 ## Local Test Surfaces
 
@@ -55,7 +54,7 @@ Do not store the exact Allure version here. Version output is a runtime fact; th
 - Accepted test layers: unit tests for commons and macros, integration/e2e tests for cargotest sample behavior, HTTP integration tests for reqwest
 - Preferred assertion style: standard Rust assertions; use `#[log_asserts]` or assertion logging from `#[allure_test]` when the test shape supports it, rather than hand-writing assertion-only steps
 - Parameterized test style: prefer explicit tests and readable cases over loops when intent would be hidden
-- Boring-test preference: keep tests direct; do not add a single manual step around an entire test body just to create evidence; shared helpers may handle mechanics but not per-test intent
+- Boring-test preference: keep tests direct; do not add a single manual step around an entire test body just to create evidence; shared helpers may handle mechanics but not per-test intent, and must not hide the behavior call being tested
 - Smoke coverage conventions: `scripts/check-cargotest-smoke.sh` verifies smoke full names against `smokes/allure-cargotest/expected-fullnames.txt`
 - Mocking and integration-test preference: prefer local deterministic boundaries already used by the suite, such as local HTTP servers and temp sample projects
 - Explicit skip/assumption mechanics: unknown
@@ -199,6 +198,7 @@ Per-test metadata belongs inline with the test. Do not centralize descriptions, 
 - Test descriptions: concise behavior intent, expected result, or regression reason; keep descriptions inline with each test
 - Attachments: use structured content types for JSON and rich Allure HTTP exchange attachments for HTTP traffic; for parser, serializer, command, fixture, and generated-file tests, attach the raw input and the meaningful output/result when it helps explain the assertion
 - Step naming: concrete behavior boundaries such as setup, parsing, command execution, request/response handling, and cleanup; do not add ceremonial whole-test wrapper steps
+- Pure function evidence: when a pure function, parser, serializer, or small domain helper is the behavior under test, make that function call visible as the behavior step and place useful input/output attachments at that boundary; do not report only before/after artifacts while the tested call itself is invisible
 - Check/assertion step naming: standard assertion logging may report assertion macro names; do not replace logged assertions with hand-written verification steps
 - Assertion/check visibility: use assertion logging when useful so expected and actual values stay visible; disable noisy assertion logging with `[package.metadata.allure] log_asserts = false` or `ALLURE_LOG_ASSERTS=false` only when there is other meaningful evidence
 - Fixture/setup evidence: temp sample projects, generated Cargo manifests, test-plan JSON, HTTP exchanges, and result summaries are useful when relevant to the assertion
