@@ -20,3 +20,6 @@ proc-macro = true
 module = "allure-test-macros"
 
 [dependencies]
+
+[dev-dependencies]
+allure-rust-commons = { path = "../allure-rust-commons" }

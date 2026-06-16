@@ -7,6 +7,8 @@
 
 use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
 
+mod doc_comments;
+
 struct ShouldPanicConfig {
     enabled: bool,
     expected: Option<String>,
@@ -16,6 +18,7 @@ struct ShouldPanicConfig {
 struct AttrArgs {
     name: Option<String>,
     id: Option<String>,
+    doc: bool,
 }
 
 #[derive(Debug)]
@@ -55,7 +58,10 @@ pub fn step(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 /// Wraps a `cargo test` test function in an Allure test lifecycle.
 ///
-/// Supports optional `name = "..."` for the display name and `id = "..."` for the Allure ID label.
+/// Supports optional `name = "..."` for the display name, `id = "..."` for the Allure ID label,
+/// and `doc = false` to disable doc-comment descriptions.
+/// Rust doc comments on the test function are used as the default markdown description unless
+/// `doc = false` is set.
 pub fn allure_test(args: TokenStream, input: TokenStream) -> TokenStream {
     let attrs = match parse_args(args) {
         Ok(attrs) => attrs,
@@ -84,7 +90,7 @@ fn parse_step_args(args: TokenStream) -> Result<StepAttrArgs, &'static str> {
 }
 
 fn parse_args(args: TokenStream) -> Result<AttrArgs, &'static str> {
-    parse_kv_args(args, &["name", "id"])
+    parse_kv_args(args, &["name", "id", "doc"])
 }
 
 fn parse_kv_args(args: TokenStream, allowed_keys: &[&str]) -> Result<AttrArgs, &'static str> {
@@ -93,6 +99,7 @@ fn parse_kv_args(args: TokenStream, allowed_keys: &[&str]) -> Result<AttrArgs, &
         return Ok(AttrArgs {
             name: None,
             id: None,
+            doc: true,
         });
     }
 
@@ -100,7 +107,9 @@ fn parse_kv_args(args: TokenStream, allowed_keys: &[&str]) -> Result<AttrArgs, &
     let mut parsed = AttrArgs {
         name: None,
         id: None,
+        doc: true,
     };
+    let mut doc_seen = false;
 
     while idx < tokens.len() {
         let key = match &tokens[idx] {
@@ -114,35 +123,31 @@ fn parse_kv_args(args: TokenStream, allowed_keys: &[&str]) -> Result<AttrArgs, &
             _ => return Err("unsupported attribute arguments, expected key = \"value\""),
         }
 
-        let raw = match tokens.get(idx) {
-            Some(TokenTree::Literal(value)) => value.to_string(),
-            _ => return Err("unsupported attribute arguments, expected key = \"value\""),
-        };
-        idx += 1;
-
-        if !raw.starts_with('"') || !raw.ends_with('"') || raw.len() < 2 {
-            return Err("attribute values must be string literals");
-        }
-
-        let value = raw[1..raw.len() - 1].to_string();
         match key.as_str() {
             "name" if allowed_keys.contains(&"name") => {
                 if parsed.name.is_some() {
                     return Err("duplicate attribute argument: name");
                 }
-                parsed.name = Some(value);
+                parsed.name = Some(parse_attribute_string(tokens.get(idx))?);
+                idx += 1;
             }
             "id" if allowed_keys.contains(&"id") => {
                 if parsed.id.is_some() {
                     return Err("duplicate attribute argument: id");
                 }
-                parsed.id = Some(value);
+                parsed.id = Some(parse_attribute_string(tokens.get(idx))?);
+                idx += 1;
+            }
+            "doc" if allowed_keys.contains(&"doc") => {
+                if doc_seen {
+                    return Err("duplicate attribute argument: doc");
+                }
+                parsed.doc = parse_attribute_bool(tokens.get(idx))?;
+                doc_seen = true;
+                idx += 1;
             }
             _ => {
-                return Err(match allowed_keys {
-                    ["name"] => "unsupported attribute argument, expected: name",
-                    _ => "unsupported attribute argument, expected one of: name, id",
-                });
+                return Err(unsupported_attribute_message(allowed_keys));
             }
         }
 
@@ -161,6 +166,34 @@ fn parse_kv_args(args: TokenStream, allowed_keys: &[&str]) -> Result<AttrArgs, &
     Ok(parsed)
 }
 
+fn parse_attribute_string(token: Option<&TokenTree>) -> Result<String, &'static str> {
+    let raw = match token {
+        Some(TokenTree::Literal(value)) => value.to_string(),
+        _ => return Err("unsupported attribute arguments, expected key = \"value\""),
+    };
+
+    if !raw.starts_with('"') || !raw.ends_with('"') || raw.len() < 2 {
+        return Err("attribute values must be string literals");
+    }
+
+    Ok(raw[1..raw.len() - 1].to_string())
+}
+
+fn parse_attribute_bool(token: Option<&TokenTree>) -> Result<bool, &'static str> {
+    match token {
+        Some(TokenTree::Ident(value)) if value.to_string() == "true" => Ok(true),
+        Some(TokenTree::Ident(value)) if value.to_string() == "false" => Ok(false),
+        _ => Err("attribute value for doc must be true or false"),
+    }
+}
+
+fn unsupported_attribute_message(allowed_keys: &[&str]) -> &'static str {
+    match allowed_keys {
+        ["name"] => "unsupported attribute argument, expected: name",
+        _ => "unsupported attribute argument, expected one of: name, id, doc",
+    }
+}
+
 fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     let mut tokens: Vec<TokenTree> = input.into_iter().collect();
 
@@ -176,6 +209,11 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         .any(|t| matches!(t, TokenTree::Ident(id) if id.to_string() == "async"));
 
     let should_panic = parse_should_panic_config(&tokens[..fn_index]);
+    let doc_description = if attrs.doc {
+        doc_comments::description(&tokens[..fn_index])
+    } else {
+        None
+    };
 
     let fn_name = tokens.iter().skip(fn_index + 1).find_map(|t| match t {
         TokenTree::Ident(id) => Some(id.to_string()),
@@ -250,6 +288,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         Some(id) => format!(".with_allure_id({id:?})"),
         None => String::new(),
     };
+    let doc_description_option = match doc_description.as_ref() {
+        Some(description) => format!(".with_description({description:?})"),
+        None => String::new(),
+    };
 
     if returns_termination_wrapper {
         let Some(return_type) = &return_type else {
@@ -283,6 +325,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
+    {doc_description_option}
     {allure_id_option};
   return ::allure_cargotest::__private::test_with_outcome_async(__allure_options, async move {{
     let allure = ::allure_cargotest::__private::current_allure()
@@ -317,6 +360,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
+    {doc_description_option}
     {allure_id_option};
   return ::allure_cargotest::__private::test_with_outcome(__allure_options, || -> () {{
     let allure = ::allure_cargotest::__private::current_allure()
@@ -358,6 +402,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
+    {doc_description_option}
     {allure_id_option};
   let __allure_runtime_test = ::allure_cargotest::__private::start_runtime_test_with_options(__allure_options);
   let __allure_result = ::allure_cargotest::__private::run_runtime_test_future(
@@ -383,6 +428,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
+    {doc_description_option}
     {allure_id_option};
   return ::allure_cargotest::__private::test_with_outcome_async(__allure_options, async move {{
     let __allure_output: {test_return_type} = {{
@@ -413,6 +459,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
+    {doc_description_option}
     {allure_id_option};
   let __allure_runtime_test = ::allure_cargotest::__private::start_runtime_test_with_options(__allure_options);
   let __allure_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe({sync_closure_src}));
@@ -433,6 +480,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_full_name(__allure_full_name.clone())
     .with_source(file!(), env!(\"CARGO_MANIFEST_DIR\"), module_path!())
     .with_panic_status(::allure_cargotest::Status::Failed)
+    {doc_description_option}
     {allure_id_option};
   return ::allure_cargotest::__private::test_with_outcome(__allure_options, || -> {test_return_type} {{
     let allure = ::allure_cargotest::__private::current_allure()

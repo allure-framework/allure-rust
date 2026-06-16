@@ -30,6 +30,7 @@ fn open_login_page() {
     // your step implementation
 }
 
+/// Verifies a user can open the login page and collect debug evidence.
 #[allure_test]
 #[test]
 fn login_works() {
@@ -47,6 +48,11 @@ fn login_works() {
 The macro still provides an `allure` value in the test body for existing code. The free functions
 above use the thread-bound current Allure context from `allure-rust-commons`, so the same style can
 also be used by other framework adapters that bind that context.
+
+Rust doc comments on `#[allure_test]` functions are used as the default markdown description.
+Calling `description` in the test body can replace that markdown description, and
+`description_html` can still set an explicit HTML description.
+Use `#[allure_test(doc = false)]` to disable doc-comment descriptions for a test.
 
 `#[allure_test]` supports both ordinary `()` tests and explicit return types that implement
 `std::process::Termination`. This keeps fallible setup, database checks, and other `?`-based
