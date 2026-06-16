@@ -2,6 +2,8 @@ attachments::writes_attachment
 concurrent_metadata::metadata_for_first_test_stays_isolated
 concurrent_metadata::metadata_for_second_test_stays_isolated
 default_and_global_labels::writes_default_and_global_labels
+descriptions::skips_doc_comment_description
+descriptions::uses_doc_comment_as_description
 descriptions::writes_descriptions
 functions::uses_commons_runtime_functions
 identifiers::allows_runtime_override_for_test_case_id

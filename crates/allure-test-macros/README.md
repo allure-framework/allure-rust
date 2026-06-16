@@ -25,6 +25,7 @@ fn check_login_state() {
     assert!(true);
 }
 
+/// Confirms the login check records a page-opening step and assertion evidence.
 #[allure_test(name = "Login works", id = "AUTH-1")]
 #[test]
 fn login_works() {
@@ -39,7 +40,10 @@ fn login_works() {
 - `#[step]` records a function call as an Allure step.
 - `#[log_asserts]` rewrites standard Rust assertion macros in a helper function so they can be
   logged according to the runtime assertion-logging configuration.
-- Optional macro arguments let you override the displayed test or step name.
+- Rust doc comments on `#[allure_test]` functions are used as the default markdown description.
+- Use `#[allure_test(doc = false)]` to disable doc-comment descriptions for a test.
+- Optional macro arguments let you override the displayed test or step name, Allure ID, and
+  doc-comment description behavior.
 
 ## Notes
 
