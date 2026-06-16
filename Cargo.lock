@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "allure-cargotest"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "allure-rust-commons",
  "allure-test-macros",
@@ -12,7 +12,7 @@ dependencies = [
 
 [[package]]
 name = "allure-reqwest"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "allure-cargotest",
  "allure-rust-commons",
@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "allure-rust-commons"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -36,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "allure-test-macros"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "allure-rust-commons",
 ]

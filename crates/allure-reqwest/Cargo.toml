@@ -18,7 +18,7 @@ default = []
 middleware = ["dep:async-trait", "dep:reqwest-middleware"]
 
 [dependencies]
-allure-rust-commons = { version = "1.1.0", path = "../allure-rust-commons" }
+allure-rust-commons = { version = "1.2.0", path = "../allure-rust-commons" }
 async-trait = { version = "0.1", optional = true }
 base64 = "0.22"
 bytes = "1"
@@ -27,7 +27,7 @@ reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5.2", default-features = false, optional = true }
 
 [dev-dependencies]
-allure-cargotest = { version = "1.1.0", path = "../allure-cargotest" }
+allure-cargotest = { version = "1.2.0", path = "../allure-cargotest" }
 serde_json = "1"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread"] }
 
