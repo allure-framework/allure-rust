@@ -1194,6 +1194,42 @@ fn join_token_streams(streams: &[TokenStream]) -> String {
         .join(", ")
 }
 
+#[derive(Clone)]
+struct CustomAssertionMessage {
+    message_expr: String,
+    step_display_expr: String,
+}
+
+fn custom_assertion_message(parts: &[TokenStream], start: usize) -> Option<CustomAssertionMessage> {
+    if parts.len() <= start {
+        return None;
+    }
+
+    let custom = join_token_streams(&parts[start..]);
+    if custom.trim().is_empty() {
+        return None;
+    }
+
+    Some(CustomAssertionMessage {
+        message_expr: format!("format!(\"{{}}\", format_args!({custom}))"),
+        step_display_expr: format!("format_args!({custom})"),
+    })
+}
+
+fn assertion_step_name(base_name: &str, custom_message: Option<&CustomAssertionMessage>) -> String {
+    match custom_message {
+        Some(custom_message) => format!(
+            "format!(\"{{}}: {{}}\", {base_name}, {})",
+            custom_message.step_display_expr
+        ),
+        None => base_name.to_string(),
+    }
+}
+
+fn assertion_step_name_from_message_var(base_name: &str) -> String {
+    format!("format!(\"{{}}: {{}}\", {base_name}, __allure_assert_message)")
+}
+
 fn generate_assert_code(kind: AssertMacroKind, args: TokenStream) -> Option<String> {
     let parts = split_macro_args(args.clone());
     let condition = parts.first()?.clone();
@@ -1202,32 +1238,30 @@ fn generate_assert_code(kind: AssertMacroKind, args: TokenStream) -> Option<Stri
     }
 
     let condition = condition.to_string();
-    let custom_message = if parts.len() > 1 {
-        let custom = join_token_streams(&parts[1..]);
-        if custom.trim().is_empty() {
-            None
-        } else {
-            Some(format!("format!(\"{{}}\", format_args!({custom}))"))
-        }
-    } else {
-        None
-    };
+    let custom_message = custom_assertion_message(&parts, 1);
     let message = custom_message
+        .as_ref()
+        .map(|custom_message| custom_message.message_expr.clone())
         .unwrap_or_else(|| format!("format!(\"assertion failed: {{}}\", stringify!({condition}))"));
     let name = format!(
         "concat!(\"{}!(\", stringify!({condition}), \")\")",
         kind.macro_name()
     );
+    let pass_name = assertion_step_name(&name, custom_message.as_ref());
+    let fail_name = custom_message
+        .as_ref()
+        .map(|_| assertion_step_name_from_message_var(&name))
+        .unwrap_or_else(|| name.clone());
 
     let mut instrumented = String::new();
     instrumented.push_str("if ");
     instrumented.push_str(&condition);
     instrumented.push_str(" { ::allure_cargotest::__private::record_assertion_pass(");
-    instrumented.push_str(&name);
+    instrumented.push_str(&pass_name);
     instrumented.push_str("); } else { let __allure_assert_message = ");
     instrumented.push_str(&message);
     instrumented.push_str("; ::allure_cargotest::__private::fail_assertion(");
-    instrumented.push_str(&name);
+    instrumented.push_str(&fail_name);
     instrumented.push_str(
         ", __allure_assert_message, Some(\"false\".to_string()), Some(\"true\".to_string())); }",
     );
@@ -1257,20 +1291,20 @@ fn generate_assert_cmp_code(kind: AssertMacroKind, args: TokenStream) -> Option<
     } else {
         "format!(\"assertion `left == right` failed\\n  left: `{:?}`,\\n right: `{:?}`\", __allure_assert_left, __allure_assert_right)"
     };
-    let message = if parts.len() > 2 {
-        let custom = join_token_streams(&parts[2..]);
-        if custom.trim().is_empty() {
-            default_message.to_string()
-        } else {
-            format!("format!(\"{{}}\", format_args!({custom}))")
-        }
-    } else {
-        default_message.to_string()
-    };
+    let custom_message = custom_assertion_message(&parts, 2);
+    let message = custom_message
+        .as_ref()
+        .map(|custom_message| custom_message.message_expr.clone())
+        .unwrap_or_else(|| default_message.to_string());
     let name = format!(
         "concat!(\"{}!(\", stringify!({left}), \", \", stringify!({right}), \")\")",
         kind.macro_name()
     );
+    let pass_name = assertion_step_name(&name, custom_message.as_ref());
+    let fail_name = custom_message
+        .as_ref()
+        .map(|_| assertion_step_name_from_message_var(&name))
+        .unwrap_or_else(|| name.clone());
 
     let mut instrumented = String::new();
     instrumented.push_str("match (&(");
@@ -1284,11 +1318,11 @@ fn generate_assert_cmp_code(kind: AssertMacroKind, args: TokenStream) -> Option<
     instrumented.push_str(
         " *__allure_assert_right { ::allure_cargotest::__private::record_assertion_pass(",
     );
-    instrumented.push_str(&name);
+    instrumented.push_str(&pass_name);
     instrumented.push_str("); } else { let __allure_assert_message = ");
     instrumented.push_str(&message);
     instrumented.push_str("; ::allure_cargotest::__private::fail_assertion(");
-    instrumented.push_str(&name);
+    instrumented.push_str(&fail_name);
     instrumented.push_str(", __allure_assert_message, Some(format!(\"{:?}\", __allure_assert_left)), Some(format!(\"{:?}\", __allure_assert_right))); } } }");
 
     Some(runtime_assert_code(

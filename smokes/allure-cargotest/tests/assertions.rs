@@ -15,8 +15,22 @@ fn step_assertions_are_nested() {
 fn logs_passing_assertions() {
     allure.description("Verifies passing standard assertions are emitted as reviewable Allure steps.");
     allure.log_step("run passing assertion matrix");
+    let user_id = 42;
+    let input = [7, 13];
+    let is_valid = true;
     assert!(true);
     assert_eq!("actual", "actual");
+    assert_eq!(
+        user_id,
+        42,
+        "expected feature flag to be enabled for user_id={user_id}"
+    );
+    assert_eq!(
+        is_valid,
+        true,
+        "validation result was wrong for input {:?}",
+        input
+    );
     assert_ne!("left", "right");
 
     helper_assertions_are_logged();
@@ -28,5 +42,11 @@ fn logs_passing_assertions() {
 fn logs_failed_assertion_details() {
     allure.description("Verifies a failed standard assertion records actual and expected values in status details.");
     allure.log_step("run assertion that should fail with captured details");
-    assert_eq!("actual", "expected");
+    let input = [404, 500];
+    assert_eq!(
+        "actual",
+        "expected",
+        "validation result was wrong for input {:?}",
+        input
+    );
 }
