@@ -2,6 +2,7 @@ attachments::writes_attachment
 concurrent_metadata::metadata_for_first_test_stays_isolated
 concurrent_metadata::metadata_for_second_test_stays_isolated
 default_and_global_labels::writes_default_and_global_labels
+descriptions::leaves_description_absent_without_doc_comment
 descriptions::skips_doc_comment_description
 descriptions::uses_doc_comment_as_description
 descriptions::writes_descriptions

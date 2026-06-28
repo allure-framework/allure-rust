@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "allure-cargotest"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "allure-rust-commons",
  "allure-test-macros",
@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "allure-rust-commons"
-version = "1.0.2"
+version = "1.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "allure-test-macros"
-version = "1.0.2"
+version = "1.2.0"
 
 [[package]]
 name = "itoa"
