@@ -615,6 +615,12 @@ fn generates_assertion_steps_by_default() {
     assert_eq!(json_string(passing, "status"), Some("passed"));
     assert!(passing.contains("\"name\":\"assert!(true)\",\"status\":\"passed\""));
     assert!(passing.contains("assert_eq!"));
+    assert!(passing.contains(
+        "\"name\":\"assert_eq!(user_id, 42): expected feature flag to be enabled for user_id=42\""
+    ));
+    assert!(passing.contains(
+        "\"name\":\"assert_eq!(is_valid, true): validation result was wrong for input [7, 13]\""
+    ));
     assert!(passing.contains("assert_ne!"));
     assert!(passing.contains("\"name\":\"step_assertions_are_nested\""));
     assert!(passing.contains("\"name\":\"assert_eq!(1 + 1, 2)\""));
@@ -624,7 +630,13 @@ fn generates_assertion_steps_by_default() {
         .expect("missing logs_failed_assertion_details result");
     assert_has_allure_result_fields(failing);
     assert_eq!(json_string(failing, "status"), Some("failed"));
-    assert!(failing.contains("\"name\":\"assert_eq!"));
+    assert_eq!(
+        json_string(failing, "message"),
+        Some("validation result was wrong for input [404, 500]")
+    );
+    assert!(failing.contains(
+        r#""name":"assert_eq!(\"actual\", \"expected\"): validation result was wrong for input [404, 500]""#
+    ));
     assert!(failing.contains("\"status\":\"failed\""));
     assert!(failing.contains(r#""actual":"\"actual\"""#));
     assert!(failing.contains(r#""expected":"\"expected\"""#));
