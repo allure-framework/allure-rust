@@ -45,7 +45,7 @@ impl Drop for TempProjectDir {
 #[allure_cargotest::log_asserts]
 fn generates_allure_results_for_descriptions_sample() {
     allure::description(
-        "Verifies the description sample emits explicit descriptions, doc comment descriptions, and doc comment opt-outs.",
+        "Verifies the description sample emits explicit descriptions, doc comment descriptions, missing-doc omissions, and doc comment opt-outs.",
     );
     let (results, _, _project_dir) = run_sample("descriptions", true);
     let result = results
@@ -72,6 +72,14 @@ fn generates_allure_results_for_descriptions_sample() {
         json_string(result, "description"),
         Some("doc comment description")
     );
+    assert_eq!(json_string(result, "descriptionHtml"), None);
+
+    let result = results
+        .get("leaves_description_absent_without_doc_comment")
+        .expect("missing leaves_description_absent_without_doc_comment result");
+    assert_has_allure_result_fields(result);
+    assert_eq!(json_string(result, "status"), Some("passed"));
+    assert_eq!(json_string(result, "description"), None);
     assert_eq!(json_string(result, "descriptionHtml"), None);
 
     let result = results
