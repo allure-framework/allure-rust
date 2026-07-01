@@ -790,6 +790,11 @@ pub fn attachment_path(
     active_allure().attachment_path(name, content_type, path)
 }
 
+/// Enters a manually-scoped step on the current thread-bound facade.
+pub fn enter_step(name: impl Into<String>) -> StepGuard {
+    active_allure().enter_step(name)
+}
+
 /// Adds a Playwright trace attachment named `trace.zip`.
 pub fn attach_trace(path: impl AsRef<Path>) -> std::io::Result<()> {
     active_allure().attach_trace(path)
@@ -1262,6 +1267,25 @@ impl AllureFacade {
         });
     }
 
+    /// Enters a step that stays open until the returned [`StepGuard`] is dropped.
+    ///
+    /// Unlike [`AllureFacade::step`], the step is not tied to a closure, so adapters can
+    /// bracket work that spans separate start and finish callbacks (such as Diesel's
+    /// `StartQuery`/`FinishQuery` instrumentation events) and record a failing status without
+    /// panicking. The guard defaults to [`Status::Passed`]; use [`StepGuard::fail`] or
+    /// [`StepGuard::set_status`] before it drops to record a different outcome.
+    pub fn enter_step(&self, name: impl Into<String>) -> StepGuard {
+        if let Some(l) = &self.lifecycle {
+            l.start_step(name);
+        }
+        StepGuard {
+            allure: self.clone(),
+            status: Status::Passed,
+            details: None,
+            finished: false,
+        }
+    }
+
     fn start_step_scope(&self, name: impl Into<String>) -> StepScope {
         if let Some(l) = &self.lifecycle {
             l.start_step(name);
@@ -1425,6 +1449,65 @@ impl Drop for StepScope {
     }
 }
 
+/// Guard for a manually-scoped Allure step entered with [`AllureFacade::enter_step`].
+///
+/// The step stays open until the guard is dropped (or [`StepGuard::finish`] is called). The
+/// recorded status defaults to [`Status::Passed`]; if the thread is panicking while a passed
+/// guard drops, the step is recorded as [`Status::Broken`] instead.
+pub struct StepGuard {
+    allure: AllureFacade,
+    status: Status,
+    details: Option<StatusDetails>,
+    finished: bool,
+}
+
+impl StepGuard {
+    /// Sets the status and details recorded when the guard closes the step.
+    pub fn set_status(&mut self, status: Status, details: Option<StatusDetails>) {
+        self.status = status;
+        self.details = details;
+    }
+
+    /// Marks the step failed with the given message.
+    pub fn fail(&mut self, message: impl Into<String>) {
+        self.set_status(
+            Status::Failed,
+            Some(StatusDetails {
+                message: Some(message.into()),
+                trace: None,
+                actual: None,
+                expected: None,
+            }),
+        );
+    }
+
+    /// Closes the step immediately with the currently recorded status.
+    pub fn finish(mut self) {
+        self.close();
+    }
+
+    fn close(&mut self) {
+        if self.finished {
+            return;
+        }
+        self.finished = true;
+        if let Some(l) = self.allure.lifecycle() {
+            let status = if std::thread::panicking() && matches!(self.status, Status::Passed) {
+                Status::Broken
+            } else {
+                self.status.clone()
+            };
+            l.stop_step(status, self.details.take());
+        }
+    }
+}
+
+impl Drop for StepGuard {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
 #[doc(hidden)]
 pub mod __private {
     use super::*;
@@ -1459,3 +1542,7 @@ pub mod __private {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "facade_tests.rs"]
+mod tests;
