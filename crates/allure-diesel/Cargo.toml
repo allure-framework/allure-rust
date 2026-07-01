@@ -25,8 +25,5 @@ diesel = { version = "2.2", default-features = false, features = ["sqlite"] }
 libsqlite3-sys = { version = "0.30", features = ["bundled"] }
 serde_json = "1"
 
-[package.metadata.allure]
-log_asserts = false
-
 [package.metadata.allure.labels]
 module = "allure-diesel"

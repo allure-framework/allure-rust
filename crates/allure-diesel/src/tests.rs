@@ -1,8 +1,11 @@
 use super::*;
 use allure_cargotest::{allure_test, CargoTestReporter};
+use allure_rust_commons::{
+    attachment as allure_attachment, feature, layer, severity, step as allure_step, story,
+};
 use diesel::prelude::*;
 use diesel::sql_query;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -56,24 +59,27 @@ fn make_results_dir(test_name: &str) -> PathBuf {
 }
 
 // Runs `body` under a dedicated Allure test context (its own results dir), with an in-memory
-// SQLite connection whose activity is captured by `AllureInstrumentation`. Returns the emitted
-// test result JSON plus the results directory so attachment files can be read back.
-fn run_within_test_context<F>(test_name: &str, body: F) -> (Value, PathBuf)
+// SQLite connection whose activity is captured by `AllureInstrumentation`, and returns whatever
+// the body produces. The body performs only database work (no assertions) so the captured result
+// holds pure query steps; tests assert on that returned value and the emitted result JSON.
+fn run_within_test_context<T, F>(test_name: &str, body: F) -> (T, Value, PathBuf)
 where
-    F: FnOnce(&mut SqliteConnection),
+    F: FnOnce(&mut SqliteConnection) -> T,
 {
     let out_dir = make_results_dir(test_name);
     let reporter = CargoTestReporter::new(&out_dir).expect("reporter should initialize");
     let full_name = format!("allure_diesel::tests::{test_name}");
 
+    let mut captured = None;
     reporter.run_test_with_metadata(test_name, Some(&full_name), None, None, |_allure| {
         let mut conn =
             SqliteConnection::establish(":memory:").expect("in-memory sqlite should connect");
         conn.set_instrumentation(AllureInstrumentation::new());
-        body(&mut conn);
+        captured = Some(body(&mut conn));
     });
 
-    (read_result(&out_dir, test_name), out_dir)
+    let value = captured.expect("test body should have run");
+    (value, read_result(&out_dir, test_name), out_dir)
 }
 
 fn read_result(out_dir: &Path, test_name: &str) -> Value {
@@ -123,10 +129,56 @@ fn find_step<'a>(steps: &'a [Value], prefix: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("expected a step starting with {prefix:?}"))
 }
 
+// Attaches a compact, readable snapshot of what the instrumentation recorded (step name, status,
+// failure message, attachment names, and nesting) as evidence of the behavior under test.
+// Mechanics only; each test states its own intent inline.
+fn attach_recorded_steps(result: &Value) {
+    let summary = summarize_steps(&result["steps"]);
+    let body = serde_json::to_vec_pretty(&summary).expect("recorded steps should serialize");
+    allure_attachment("recorded Allure steps", "application/json", body);
+}
+
+fn summarize_steps(steps: &Value) -> Value {
+    let items = steps
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|step| {
+            let mut entry = Map::new();
+            entry.insert("name".to_string(), step["name"].clone());
+            entry.insert("status".to_string(), step["status"].clone());
+            if let Some(message) = step["statusDetails"]["message"].as_str() {
+                entry.insert("message".to_string(), Value::String(message.to_string()));
+            }
+            let attachments: Vec<Value> = step["attachments"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|attachment| attachment["name"].clone())
+                .collect();
+            if !attachments.is_empty() {
+                entry.insert("attachments".to_string(), Value::Array(attachments));
+            }
+            let children = summarize_steps(&step["steps"]);
+            if children.as_array().map(|c| !c.is_empty()).unwrap_or(false) {
+                entry.insert("steps".to_string(), children);
+            }
+            Value::Object(entry)
+        })
+        .collect();
+    Value::Array(items)
+}
+
+/// Executed statements are recorded as ordered Allure steps, each named with the rendered SQL and
+/// carrying it as a query.sql attachment.
 #[allure_test]
 #[test]
 fn records_each_query_as_step_with_sql_attachment() {
-    let (result, out_dir) =
+    feature("Diesel query instrumentation");
+    story("Executed queries recorded as steps");
+    layer("integration");
+
+    let (users, result, out_dir) =
         run_within_test_context("records_each_query_as_step_with_sql_attachment", |conn| {
             sql_query("create table users (id integer primary key, name text not null)")
                 .execute(conn)
@@ -137,10 +189,13 @@ fn records_each_query_as_step_with_sql_attachment() {
             let users: Vec<User> = sql_query("select id, name from users order by id")
                 .load(conn)
                 .expect("select should succeed");
-            assert_eq!(users.len(), 1);
-            assert_eq!(users[0].id, 1);
-            assert_eq!(users[0].name, "Ada");
+            users
         });
+    attach_recorded_steps(&result);
+
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0].id, 1);
+    assert_eq!(users[0].name, "Ada");
 
     let steps = steps(&result);
     find_step(steps, "create table users");
@@ -158,17 +213,25 @@ fn records_each_query_as_step_with_sql_attachment() {
     );
 }
 
+/// A query that returns a database error marks its step failed and preserves the Diesel error
+/// message.
 #[allure_test]
 #[test]
 fn marks_failed_query_step_failed() {
-    let (result, _out_dir) = run_within_test_context("marks_failed_query_step_failed", |conn| {
-        let outcome = sql_query("select id from missing_table").execute(conn);
-        assert!(
-            outcome.is_err(),
-            "query against a missing table should fail"
-        );
-    });
+    feature("Diesel query instrumentation");
+    story("Failed queries reported as failed steps");
+    layer("integration");
 
+    let (outcome, result, _out_dir) =
+        run_within_test_context("marks_failed_query_step_failed", |conn| {
+            sql_query("select id from missing_table").execute(conn)
+        });
+    attach_recorded_steps(&result);
+
+    assert!(
+        outcome.is_err(),
+        "query against a missing table should fail"
+    );
     let failed = find_step(steps(&result), "select id from missing_table");
     assert_eq!(failed["status"], "failed");
     assert!(
@@ -180,10 +243,16 @@ fn marks_failed_query_step_failed() {
     );
 }
 
+/// Statements run inside a transaction nest under a transaction step, and the COMMIT boundary
+/// nests with them rather than leaking out as a sibling.
 #[allure_test]
 #[test]
 fn records_transaction_with_nested_query_steps() {
-    let (result, _out_dir) =
+    feature("Diesel query instrumentation");
+    story("Transactions group their queries");
+    layer("integration");
+
+    let (_, result, _out_dir) =
         run_within_test_context("records_transaction_with_nested_query_steps", |conn| {
             sql_query("create table t (id integer primary key)")
                 .execute(conn)
@@ -195,6 +264,7 @@ fn records_transaction_with_nested_query_steps() {
             })
             .expect("transaction should commit");
         });
+    attach_recorded_steps(&result);
 
     let steps = steps(&result);
     let transaction = find_step(steps, "transaction");
@@ -227,22 +297,30 @@ fn records_transaction_with_nested_query_steps() {
     );
 }
 
+/// Typed query-builder calls from a service that issues several queries are recorded as sibling
+/// steps, with bind values captured in the query.sql attachment.
 #[allure_test]
 #[test]
 fn records_typed_query_builder_calls_as_sibling_steps() {
-    let (result, out_dir) = run_within_test_context(
+    feature("Diesel query instrumentation");
+    story("Typed query builder recording");
+    layer("integration");
+
+    let (found, result, out_dir) = run_within_test_context(
         "records_typed_query_builder_calls_as_sibling_steps",
         |conn| {
             sql_query("create table dao_users (id integer primary key, name text not null)")
                 .execute(conn)
                 .expect("create table should succeed");
             // A service method issuing multiple queries records each as its own step.
-            let found = create_and_fetch(conn, 1, "Ada").expect("dao calls should succeed");
-            assert_eq!(found.len(), 1);
-            assert_eq!(found[0].id, 1);
-            assert_eq!(found[0].name, "Ada");
+            create_and_fetch(conn, 1, "Ada").expect("dao calls should succeed")
         },
     );
+    attach_recorded_steps(&result);
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].id, 1);
+    assert_eq!(found[0].name, "Ada");
 
     let steps = steps(&result);
     // Each query the service issued is a distinct top-level sibling step, none nested in another.
@@ -267,10 +345,17 @@ fn records_typed_query_builder_calls_as_sibling_steps() {
     );
 }
 
+/// A rolled-back transaction nests its ROLLBACK boundary, and the guard stack recovers so later
+/// queries record at the top level. Regression guard for closing the transaction step before its
+/// boundary query.
 #[allure_test]
 #[test]
 fn records_rolled_back_transaction_and_recovers() {
-    let (result, _out_dir) =
+    feature("Diesel query instrumentation");
+    story("Rolled-back transactions");
+    layer("integration");
+
+    let (outcome, result, _out_dir) =
         run_within_test_context("records_rolled_back_transaction_and_recovers", |conn| {
             sql_query("create table t (id integer primary key)")
                 .execute(conn)
@@ -279,12 +364,15 @@ fn records_rolled_back_transaction_and_recovers() {
                 sql_query("insert into t (id) values (1)").execute(conn)?;
                 Err(diesel::result::Error::RollbackTransaction)
             });
-            assert!(outcome.is_err(), "transaction should roll back");
             // A query issued after the rollback must record at the top level again.
             sql_query("insert into t (id) values (2)")
                 .execute(conn)
                 .expect("post-rollback insert should succeed");
+            outcome
         });
+    attach_recorded_steps(&result);
+
+    assert!(outcome.is_err(), "transaction should roll back");
 
     let steps = steps(&result);
     let transaction = find_step(steps, "transaction");
@@ -329,10 +417,18 @@ fn records_rolled_back_transaction_and_recovers() {
     );
 }
 
+/// A COMMIT that fails at the boundary (a deferred foreign-key violation) marks the transaction
+/// step failed instead of passed. Regression guard for a transaction reported passed despite a
+/// failed commit.
 #[allure_test]
 #[test]
 fn failed_commit_marks_transaction_step_failed() {
-    let (result, _out_dir) = run_within_test_context(
+    feature("Diesel query instrumentation");
+    story("Commit failures reflected on the transaction");
+    layer("integration");
+    severity("critical");
+
+    let (outcome, result, _out_dir) = run_within_test_context(
         "failed_commit_marks_transaction_step_failed",
         |conn| {
             // A deferred foreign-key constraint is only checked at COMMIT, so the transaction
@@ -346,15 +442,17 @@ fn failed_commit_marks_transaction_step_failed() {
             sql_query("create table child (id integer primary key, parent_id integer not null references parent(id) deferrable initially deferred)")
                 .execute(conn)
                 .expect("create child should succeed");
-            let outcome = conn.transaction::<(), diesel::result::Error, _>(|conn| {
+            conn.transaction::<(), diesel::result::Error, _>(|conn| {
                 sql_query("insert into child (id, parent_id) values (1, 999)").execute(conn)?;
                 Ok(())
-            });
-            assert!(
-                outcome.is_err(),
-                "commit should fail on the deferred foreign-key violation"
-            );
+            })
         },
+    );
+    attach_recorded_steps(&result);
+
+    assert!(
+        outcome.is_err(),
+        "commit should fail on the deferred foreign-key violation"
     );
 
     let steps = steps(&result);
@@ -388,10 +486,18 @@ fn failed_commit_marks_transaction_step_failed() {
     );
 }
 
+/// A failed BEGIN closes the transaction step with the error and rebalances the guard stack
+/// instead of leaking a dangling step under which later queries would nest. Regression guard for a
+/// leaked transaction guard on failed transaction start.
 #[allure_test]
 #[test]
 fn failed_begin_closes_transaction_step_and_recovers() {
-    let (result, _out_dir) = run_within_test_context(
+    feature("Diesel query instrumentation");
+    story("Begin failures reflected on the transaction");
+    layer("integration");
+    severity("critical");
+
+    let (outcome, result, _out_dir) = run_within_test_context(
         "failed_begin_closes_transaction_step_and_recovers",
         |conn| {
             sql_query("create table t (id integer primary key)")
@@ -406,16 +512,19 @@ fn failed_begin_closes_transaction_step_and_recovers() {
                 sql_query("insert into t (id) values (1)").execute(conn)?;
                 Ok(())
             });
-            assert!(
-                outcome.is_err(),
-                "BEGIN should fail while already in a transaction"
-            );
             // A query issued after the failed start must record at the top level, proving the
             // transaction guard did not leak onto the stack.
             sql_query("insert into t (id) values (2)")
                 .execute(conn)
                 .expect("post-failure insert should succeed");
+            outcome
         },
+    );
+    attach_recorded_steps(&result);
+
+    assert!(
+        outcome.is_err(),
+        "BEGIN should fail while already in a transaction"
     );
 
     let steps = steps(&result);
@@ -455,11 +564,26 @@ fn failed_begin_closes_transaction_step_and_recovers() {
     );
 }
 
+/// sql_preview truncates over-long SQL to the character budget with a trailing ellipsis and
+/// returns shorter SQL unchanged.
 #[allure_test]
 #[test]
 fn sql_preview_truncates_long_sql_with_ellipsis() {
-    let long = format!("SELECT {}", "x".repeat(100));
-    let preview = sql_preview(&long, 10);
+    feature("Diesel query instrumentation");
+    story("SQL preview truncation");
+    layer("unit");
+
+    let long = format!("select {}", "x".repeat(100));
+    let preview = allure_step(
+        "render an over-long statement at a 10-character budget",
+        || {
+            allure_attachment("input SQL", "text/plain", long.as_bytes());
+            let preview = sql_preview(&long, 10);
+            allure_attachment("preview", "text/plain", preview.as_bytes());
+            preview
+        },
+    );
+
     assert_eq!(
         preview.chars().count(),
         11,
