@@ -144,7 +144,7 @@ jobs:
 
       - name: Post Allure summary
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
-        uses: allure-framework/allure-action@v0.7.1
+        uses: allure-framework/allure-action@v0.7.2
         with:
           report-directory: ./build/allure-report
           github-token: ${{ secrets.GITHUB_TOKEN }}
