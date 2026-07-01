@@ -4,6 +4,7 @@ members = [
   "crates/allure-reqwest",
   "crates/allure-test-macros",
   "crates/allure-cargotest",
+  "crates/allure-diesel",
 ]
 exclude = [
   "smokes/allure-cargotest",

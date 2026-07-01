@@ -23,6 +23,7 @@ This workspace currently includes:
 
 - `allure-rust-commons`: core runtime model, lifecycle, writer, and facade APIs.
 - `allure-reqwest`: `reqwest` integration for Allure HTTP Exchange attachments.
+- `allure-diesel`: `diesel` integration that records executed SQL queries as Allure steps.
 - `allure-cargotest`: test integration helper and reporter for `cargo test`.
 - `allure-test-macros`: procedural macro crate that provides `#[allure_test]`, `#[step]`,
   and `#[log_asserts]`.
