@@ -22,7 +22,7 @@ diesel = { version = "2.2", default-features = false }
 [dev-dependencies]
 allure-cargotest = { version = "1.4.0", path = "../allure-cargotest" }
 diesel = { version = "2.2", default-features = false, features = ["sqlite"] }
-libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+libsqlite3-sys = { version = "0.37", features = ["bundled"] }
 serde_json = "1"
 
 [package.metadata.allure.labels]
