@@ -95,7 +95,7 @@ impl FileSystemResultsWriter {
         keys.sort_unstable();
         let content = keys
             .into_iter()
-            .map(|k| format!("{}={}", k, &properties[k]))
+            .map(|k| format!("{}={}", k, properties[k]))
             .collect::<Vec<_>>()
             .join("\n");
         fs::write(&path, content)?;
