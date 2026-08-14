@@ -20,7 +20,7 @@ middleware = ["dep:async-trait", "dep:reqwest-middleware"]
 [dependencies]
 allure-rust-commons = { version = "1.4.0", path = "../allure-rust-commons" }
 async-trait = { version = "0.1", optional = true }
-base64 = "0.22"
+base64 = "0.23"
 bytes = "1"
 http = "1"
 reqwest = { version = "0.13", default-features = false }
