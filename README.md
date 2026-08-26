@@ -180,7 +180,8 @@ It exports these main building blocks:
   - `AllureRuntime`: owns a results writer and creates per-execution lifecycles.
   - `AllureLifecycle`: manages active test state, nested steps, metadata, and final write.
 - **Writer (`writer`)**:
-  - `FileSystemResultsWriter`: writes result JSON and attachment files into an output directory.
+  - `FileSystemResultsWriter`: atomically publishes result JSON and attachment files from
+    same-directory `.tmp` staging files.
 - **Facade (`facade`)**:
   - `AllureFacade`: ergonomic API for tests/framework adapters.
   - Macro-free test runners such as `test`, `test_named`, and `test_with`.

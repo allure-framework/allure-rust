@@ -193,3 +193,7 @@ The writer creates the target directory if it does not already exist:
 ```rust
 let writer = FileSystemResultsWriter::new("target/allure-results")?;
 ```
+
+Every result artifact is first written beside its target with a `.tmp` suffix, synced when the
+filesystem supports it, and then atomically renamed to its final name. Consumers watching the
+results directory therefore only discover fully written files.
