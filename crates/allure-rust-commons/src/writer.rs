@@ -3,7 +3,8 @@
 use std::{
     collections::HashMap,
     ffi::OsStr,
-    fs,
+    fs::{self, File},
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -22,7 +23,10 @@ pub const PLAYWRIGHT_TRACE_ATTACHMENT_MIME: &str = "application/vnd.allure.playw
 /// File extension used for Playwright trace attachments.
 pub const PLAYWRIGHT_TRACE_ATTACHMENT_EXTENSION: &str = ".zip";
 
-/// Writes Allure result files and attachments into a directory.
+/// Writes Allure result files and attachments atomically into a directory.
+///
+/// Each artifact is staged beside its target with a `.tmp` suffix, synced when
+/// the filesystem supports it, and then published with an atomic rename.
 #[derive(Debug, Clone)]
 pub struct FileSystemResultsWriter {
     out_dir: PathBuf,
@@ -98,7 +102,7 @@ impl FileSystemResultsWriter {
             .map(|k| format!("{}={}", k, properties[k]))
             .collect::<Vec<_>>()
             .join("\n");
-        fs::write(&path, content)?;
+        write_atomically(&path, content.as_bytes())?;
         Ok(path)
     }
 
@@ -126,7 +130,7 @@ impl FileSystemResultsWriter {
         bytes: &[u8],
     ) -> std::io::Result<PathBuf> {
         let path = self.out_dir.join(source_name);
-        fs::write(&path, bytes)?;
+        write_atomically(&path, bytes)?;
         Ok(path)
     }
 
@@ -140,14 +144,50 @@ impl FileSystemResultsWriter {
     ) -> std::io::Result<(String, PathBuf)> {
         let source_name = attachment_source_name(uuid, attachment_name, content_type);
         let path = self.out_dir.join(&source_name);
-        fs::write(&path, bytes)?;
+        write_atomically(&path, bytes)?;
         Ok((source_name, path))
     }
 
     fn write_json<T: serde::Serialize>(&self, path: &Path, value: &T) -> std::io::Result<()> {
         let json = serde_json::to_vec(value)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        fs::write(path, json)
+        write_atomically(path, &json)
+    }
+}
+
+fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let temporary_path = temporary_path(path);
+    let mut temporary_file = File::create(&temporary_path)?;
+
+    let write_result = (|| {
+        temporary_file.write_all(bytes)?;
+        sync_if_supported(&temporary_file)
+    })();
+    drop(temporary_file);
+
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&temporary_path);
+        return Err(error);
+    }
+
+    if let Err(error) = fs::rename(&temporary_path, path) {
+        let _ = fs::remove_file(&temporary_path);
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+fn temporary_path(path: &Path) -> PathBuf {
+    let mut temporary_path = path.as_os_str().to_os_string();
+    temporary_path.push(".tmp");
+    PathBuf::from(temporary_path)
+}
+
+fn sync_if_supported(file: &File) -> io::Result<()> {
+    match file.sync_all() {
+        Err(error) if error.kind() == io::ErrorKind::Unsupported => Ok(()),
+        result => result,
     }
 }
 

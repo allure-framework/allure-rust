@@ -240,6 +240,35 @@ fn write_attachment_methods_write_expected_files() {
 }
 
 #[test]
+fn write_stages_content_at_target_name_with_tmp_suffix() {
+    allure_test(
+        module_path!(),
+        "write_stages_content_at_target_name_with_tmp_suffix",
+        "Verifies writes use the target's same-directory .tmp path and preserve the published file when staging fails.",
+        || {
+            let writer = make_writer();
+            let target = writer
+                .write_attachment_named("atomic.bin", b"published")
+                .expect("initial attachment should write");
+            let temporary = writer.out_dir.join("atomic.bin.tmp");
+            assert!(!temporary.exists());
+            fs::create_dir(&temporary).expect("temporary path should be blocked by a directory");
+
+            writer
+                .write_attachment_named("atomic.bin", b"replacement")
+                .expect_err("write should fail when its temporary path is unavailable");
+
+            assert_eq!(temporary.parent(), target.parent());
+            assert!(temporary.is_dir());
+            assert_eq!(
+                fs::read(&target).expect("published attachment should remain readable"),
+                b"published"
+            );
+        },
+    );
+}
+
+#[test]
 fn serializes_with_escaped_strings() {
     allure_test(
         module_path!(),
