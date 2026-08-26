@@ -17,5 +17,8 @@ categories.workspace = true
 allure-rust-commons = { version = "1.4.0", path = "../allure-rust-commons" }
 allure-test-macros = { version = "1.4.0", path = "../allure-test-macros" }
 
+[dev-dependencies]
+serde_json = "1"
+
 [package.metadata.allure.labels]
 module = "allure-cargotest"

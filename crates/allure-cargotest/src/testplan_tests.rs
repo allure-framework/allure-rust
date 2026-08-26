@@ -6,6 +6,7 @@ use std::{
 };
 
 use allure_rust_commons as allure;
+use serde_json::Value;
 
 use super::{parse_test_plan, TestPlan};
 
@@ -33,7 +34,7 @@ fn temp_results_dir(case_name: &str) -> PathBuf {
     env::temp_dir().join(format!("allure-testplan-{case_name}-results-{nanos}"))
 }
 
-fn read_global_artifacts(results_dir: &std::path::Path) -> Vec<String> {
+fn read_global_errors(results_dir: &std::path::Path) -> Vec<Value> {
     fs::read_dir(results_dir)
         .expect("results directory should exist")
         .filter_map(|entry| entry.ok())
@@ -43,8 +44,24 @@ fn read_global_artifacts(results_dir: &std::path::Path) -> Vec<String> {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name.ends_with("-globals.json"))
         })
-        .map(|path| fs::read_to_string(path).expect("global artifact should be readable"))
+        .flat_map(|path| {
+            let artifact = fs::read_to_string(path).expect("global artifact should be readable");
+            let artifact: Value =
+                serde_json::from_str(&artifact).expect("global artifact should contain valid JSON");
+            artifact
+                .get("errors")
+                .and_then(Value::as_array)
+                .expect("global artifact should contain an errors array")
+                .clone()
+        })
         .collect()
+}
+
+fn global_error_message(error: &Value) -> &str {
+    error
+        .get("message")
+        .and_then(Value::as_str)
+        .expect("global error should contain a message")
 }
 
 fn with_env_var_disabled() {
@@ -182,12 +199,13 @@ fn reporter_records_malformed_test_plan_as_a_global_error() {
     let _reporter = crate::CargoTestReporter::new(&results_dir)
         .expect("reporter should remain available after a test-plan error");
 
-    let globals = read_global_artifacts(&results_dir);
-    assert_eq!(globals.len(), 1);
-    assert!(globals[0].contains(
+    let errors = read_global_errors(&results_dir);
+    assert_eq!(errors.len(), 1);
+    let message = global_error_message(&errors[0]);
+    assert!(message.contains(
         "Allure test plan initialization failed; test selection was not applied: could not parse test plan JSON"
     ));
-    assert!(globals[0].contains("\"timestamp\":"));
+    assert!(errors[0].get("timestamp").and_then(Value::as_i64).is_some());
     let has_test_result = fs::read_dir(&results_dir)
         .expect("results directory should exist")
         .filter_map(|entry| entry.ok())
@@ -220,12 +238,13 @@ fn reporter_records_unreadable_test_plan_as_a_global_error() {
         .expect("reporter should remain available after a test-plan error");
 
     assert!(reporter.is_selected("sample", Some("sample"), None, None));
-    let globals = read_global_artifacts(&results_dir);
-    assert_eq!(globals.len(), 1);
-    assert!(globals[0].contains(
+    let errors = read_global_errors(&results_dir);
+    assert_eq!(errors.len(), 1);
+    let message = global_error_message(&errors[0]);
+    assert!(message.contains(
         "Allure test plan initialization failed; test selection was not applied: could not read"
     ));
-    assert!(globals[0].contains(
+    assert!(message.contains(
         path.to_str()
             .expect("temporary test-plan path should be valid UTF-8")
     ));
