@@ -836,6 +836,11 @@ pub fn global_error_with_trace(
     active_allure().global_error_with_trace(message, trace)
 }
 
+/// Reports one independently observed run-level error.
+pub fn report_global_error(error: GlobalError) -> std::io::Result<()> {
+    active_allure().report_global_error(error)
+}
+
 /// Adds an HTTP exchange as an ordered evidence step.
 pub fn http_exchange(exchange: HttpExchange) {
     active_allure().http_exchange(exchange);
@@ -1219,18 +1224,7 @@ impl AllureFacade {
 
     /// Adds a run-level error.
     pub fn global_error(&self, message: impl Into<String>) -> std::io::Result<()> {
-        let message = message.into();
-        if let Some(l) = &self.lifecycle {
-            return l.add_global_error(message, None);
-        }
-
-        write_globals(Globals {
-            attachments: Vec::new(),
-            errors: vec![GlobalError {
-                message,
-                trace: None,
-            }],
-        })
+        self.report_global_error(GlobalError::new(message))
     }
 
     /// Adds a run-level error with a trace.
@@ -1239,18 +1233,18 @@ impl AllureFacade {
         message: impl Into<String>,
         trace: impl Into<String>,
     ) -> std::io::Result<()> {
-        let message = message.into();
-        let trace = trace.into();
+        self.report_global_error(GlobalError::new(message).with_trace(trace))
+    }
+
+    /// Reports one independently observed run-level error.
+    pub fn report_global_error(&self, error: GlobalError) -> std::io::Result<()> {
         if let Some(l) = &self.lifecycle {
-            return l.add_global_error(message, Some(trace));
+            return l.report_global_error(error);
         }
 
         write_globals(Globals {
             attachments: Vec::new(),
-            errors: vec![GlobalError {
-                message,
-                trace: Some(trace),
-            }],
+            errors: vec![error],
         })
     }
 

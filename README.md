@@ -206,8 +206,14 @@ To integrate Allure with another Rust test runner or framework:
    - on test start -> `start_test_case(...)`
    - during test -> labels/links/parameters/steps/attachments
    - on test end -> `stop_test_case(status, details)`
+   - on a final failure outside any concrete test -> `report_global_error(...)`
 4. **Map framework statuses** to Allure statuses (`Passed`, `Failed`, `Broken`, `Skipped`).
 5. **Persist artifacts** via `add_attachment(...)` when your framework emits logs/files.
+
+Only create `TestResult` entries for real test invocations whose normal identity is known. Runner,
+suite, discovery, enumeration, and global fixture failures belong in distinct `*-globals.json`
+artifacts unless the runner already made the same event the outcome of a concrete test. Wait for
+retry finality and avoid reporting the same failure both globally and on a test.
 
 Minimal sketch:
 

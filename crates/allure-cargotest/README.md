@@ -110,6 +110,24 @@ Override the default results directory with `ALLURE_RESULTS_DIR`:
 ALLURE_RESULTS_DIR=./allure-results cargo test
 ```
 
+## Configure test-plan selection
+
+Set `ALLURE_TESTPLAN_PATH` to an Allure test-plan JSON file to run only matching test identities:
+
+```bash
+ALLURE_TESTPLAN_PATH=./testplan.json cargo test
+```
+
+The adapter loads the plan once for a macro-driven test process and once when a manual
+`CargoTestReporter` is created. If a configured file cannot be read or parsed, selection is not
+applied, the tests remain runnable, and the initialization failure is written as its own
+`*-globals.json` artifact instead of a synthetic test result.
+
+The macro integration observes concrete Rust test invocations, but stable `cargo test` does not
+provide it with suite-wide discovery, global fixture, dynamic enumeration, or run teardown events.
+Failures represented by the test harness as a concrete test outcome therefore remain test-owned;
+the adapter does not infer unavailable global lifecycle events.
+
 ## Configure assertion logging
 
 Standard assertion logging is enabled by default. `#[allure_test]` and `#[step]` rewrite standard

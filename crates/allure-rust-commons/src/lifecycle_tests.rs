@@ -393,6 +393,118 @@ fn facade_global_diagnostics_use_lifecycle_writer() {
                 .expect("global error file should exist");
             assert_eq!(error_globals["errors"][0]["message"], "runner failed");
             assert_eq!(error_globals["errors"][0]["trace"], "stack trace");
+            assert!(error_globals["errors"][0]["timestamp"]
+                .as_i64()
+                .is_some_and(|timestamp| timestamp > 0));
+        },
+    );
+}
+
+#[test]
+fn structured_global_error_preserves_failure_evidence() {
+    allure_test(
+        module_path!(),
+        "structured_global_error_preserves_failure_evidence",
+        "Verifies a global error preserves its observation time, trace, and assertion values without an empty attachment field.",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("structured-global-error");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle);
+
+            allure
+                .report_global_error(
+                    GlobalError::new("Global setup failed: values differed")
+                        .with_timestamp(1_787_734_806_302)
+                        .with_trace("AssertionError: values differed\n  at setup")
+                        .with_actual("blue")
+                        .with_expected("green"),
+                )
+                .expect("global error should be recorded");
+
+            let globals = read_jsons_with_suffix(&out_dir, "-globals.json");
+            assert_eq!(globals.len(), 1);
+            let object = globals[0]
+                .as_object()
+                .expect("globals artifact should be an object");
+            assert_eq!(object.len(), 1);
+            assert!(!object.contains_key("attachments"));
+            let error = &globals[0]["errors"][0];
+            assert_eq!(error["message"], "Global setup failed: values differed");
+            assert_eq!(
+                error["trace"],
+                "AssertionError: values differed\n  at setup"
+            );
+            assert_eq!(error["timestamp"], 1_787_734_806_302_i64);
+            assert_eq!(error["actual"], "blue");
+            assert_eq!(error["expected"], "green");
+        },
+    );
+}
+
+#[test]
+fn context_only_global_error_omits_unavailable_details() {
+    allure_test(
+        module_path!(),
+        "context_only_global_error_omits_unavailable_details",
+        "Verifies a global failure without an error object reports context and time without inventing trace or assertion details.",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("context-only-global-error");
+            let allure = crate::facade::AllureFacade::with_lifecycle(lifecycle);
+
+            allure
+                .global_error("Container was aborted before any test started")
+                .expect("global error should be recorded");
+
+            let globals = read_jsons_with_suffix(&out_dir, "-globals.json");
+            assert_eq!(globals.len(), 1);
+            let error = globals[0]["errors"][0]
+                .as_object()
+                .expect("global error should be an object");
+            assert_eq!(
+                error.get("message").and_then(|value| value.as_str()),
+                Some("Container was aborted before any test started")
+            );
+            assert!(error
+                .get("timestamp")
+                .and_then(|value| value.as_i64())
+                .is_some_and(|timestamp| timestamp > 0));
+            assert!(!error.contains_key("trace"));
+            assert!(!error.contains_key("actual"));
+            assert!(!error.contains_key("expected"));
+        },
+    );
+}
+
+#[test]
+fn independent_global_errors_use_distinct_artifacts() {
+    allure_test(
+        module_path!(),
+        "independent_global_errors_use_distinct_artifacts",
+        "Verifies independently observed lifecycle failures cannot overwrite one another.",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("distinct-global-errors");
+
+            lifecycle
+                .add_global_error("Global setup failed", None)
+                .expect("setup error should be recorded");
+            lifecycle
+                .add_global_error("Global teardown failed", None)
+                .expect("teardown error should be recorded");
+
+            let globals = read_jsons_with_suffix(&out_dir, "-globals.json");
+            assert_eq!(globals.len(), 2);
+            let mut messages = globals
+                .iter()
+                .map(|artifact| {
+                    artifact["errors"][0]["message"]
+                        .as_str()
+                        .expect("global error message should be a string")
+                })
+                .collect::<Vec<_>>();
+            messages.sort_unstable();
+            assert_eq!(
+                messages,
+                vec!["Global setup failed", "Global teardown failed"]
+            );
         },
     );
 }
@@ -497,6 +609,61 @@ fn start_with_full_name_derives_test_case_id_and_finalizes_dangling_steps() {
             assert_eq!(result["steps"][0]["name"], "dangling");
             assert_eq!(result["steps"][0]["status"], "broken");
             assert_eq!(result["steps"][0]["stage"], "finished");
+        },
+    );
+}
+
+#[test]
+fn later_success_does_not_overwrite_an_observed_test_failure() {
+    allure_test(
+        module_path!(),
+        "later_success_does_not_overwrite_an_observed_test_failure",
+        "Verifies a success callback cannot replace a failure already owned by the concrete test invocation.",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("monotonic-test-status");
+
+            lifecycle.start_test_case("monotonic-status");
+            lifecycle.update_test_case(|test| {
+                test.status = Some(Status::Failed);
+                test.status_details = Some(StatusDetails {
+                    message: Some("assertion failed first".to_string()),
+                    ..Default::default()
+                });
+            });
+            lifecycle.stop_test_case(Status::Passed, None);
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0]["status"], "failed");
+            assert_eq!(
+                results[0]["statusDetails"]["message"],
+                "assertion failed first"
+            );
+        },
+    );
+}
+
+#[test]
+fn global_error_does_not_change_an_unrelated_test_result() {
+    allure_test(
+        module_path!(),
+        "global_error_does_not_change_an_unrelated_test_result",
+        "Verifies a run-level failure remains separate from a concrete test that completed successfully.",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("global-error-test-isolation");
+
+            lifecycle.start_test_case("completed test");
+            lifecycle
+                .add_global_error("Global teardown failed", None)
+                .expect("global error should be recorded");
+            lifecycle.stop_test_case(Status::Passed, None);
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            let globals = read_jsons_with_suffix(&out_dir, "-globals.json");
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0]["status"], "passed");
+            assert_eq!(globals.len(), 1);
+            assert_eq!(globals[0]["errors"][0]["message"], "Global teardown failed");
         },
     );
 }

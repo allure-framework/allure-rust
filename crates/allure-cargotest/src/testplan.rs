@@ -1,4 +1,6 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::PathBuf, sync::OnceLock};
+
+use allure_rust_commons::{AllureFacade, GlobalError};
 
 const TESTPLAN_ENV_VAR: &str = "ALLURE_TESTPLAN_PATH";
 
@@ -28,31 +30,10 @@ impl TestPlan {
     ///
     /// Malformed JSON is treated as a non-fatal warning and does not panic test execution.
     pub fn from_env() -> Option<Self> {
-        let path = env::var_os(TESTPLAN_ENV_VAR).map(PathBuf::from)?;
-        if !path.exists() {
-            return None;
-        }
-
-        let body = match fs::read_to_string(&path) {
-            Ok(body) => body,
-            Err(err) => {
-                eprintln!(
-                    "warning: failed to read {} from {}: {err}",
-                    TESTPLAN_ENV_VAR,
-                    path.display()
-                );
-                return None;
-            }
-        };
-
-        match parse_test_plan(&body) {
-            Some(plan) => Some(plan),
-            None => {
-                eprintln!(
-                    "warning: failed to parse test plan JSON from {} ({})",
-                    TESTPLAN_ENV_VAR,
-                    path.display()
-                );
+        match load_test_plan_from_env() {
+            Ok(plan) => plan,
+            Err(error) => {
+                eprintln!("warning: {error}");
                 None
             }
         }
@@ -81,6 +62,72 @@ impl TestPlan {
                 .zip(full_name)
                 .is_some_and(|(selector, identity)| selector == identity)
         })
+    }
+}
+
+#[derive(Debug)]
+struct TestPlanLoadError {
+    message: String,
+}
+
+impl std::fmt::Display for TestPlanLoadError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+fn load_test_plan_from_env() -> Result<Option<TestPlan>, TestPlanLoadError> {
+    let Some(path) = env::var_os(TESTPLAN_ENV_VAR).map(PathBuf::from) else {
+        return Ok(None);
+    };
+    let context = "Allure test plan initialization failed; test selection was not applied";
+    let body = fs::read_to_string(&path).map_err(|error| TestPlanLoadError {
+        message: format!("{context}: could not read {}: {error}", path.display()),
+    })?;
+    let plan = parse_test_plan(&body).ok_or_else(|| TestPlanLoadError {
+        message: format!(
+            "{context}: could not parse test plan JSON from {}",
+            path.display()
+        ),
+    })?;
+    Ok(Some(plan))
+}
+
+pub(crate) fn load_test_plan_for_reporter(allure: &AllureFacade) -> Option<TestPlan> {
+    match load_test_plan_from_env() {
+        Ok(plan) => plan,
+        Err(error) => {
+            report_test_plan_error(error, |global_error| {
+                allure.report_global_error(global_error)
+            });
+            None
+        }
+    }
+}
+
+pub(crate) fn active_test_plan() -> Option<&'static TestPlan> {
+    static ACTIVE_TEST_PLAN: OnceLock<Option<TestPlan>> = OnceLock::new();
+
+    ACTIVE_TEST_PLAN
+        .get_or_init(|| match load_test_plan_from_env() {
+            Ok(plan) => plan,
+            Err(error) => {
+                report_test_plan_error(error, allure_rust_commons::report_global_error);
+                None
+            }
+        })
+        .as_ref()
+}
+
+fn report_test_plan_error(
+    error: TestPlanLoadError,
+    report: impl FnOnce(GlobalError) -> std::io::Result<()>,
+) {
+    eprintln!("warning: {error}");
+    if let Err(report_error) = report(GlobalError::new(error.to_string())) {
+        eprintln!(
+            "warning: failed to report Allure test plan initialization error: {report_error}"
+        );
     }
 }
 
