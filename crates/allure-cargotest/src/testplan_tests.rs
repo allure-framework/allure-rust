@@ -6,6 +6,7 @@ use std::{
 };
 
 use allure_rust_commons as allure;
+use serde_json::Value;
 
 use super::{parse_test_plan, TestPlan};
 
@@ -23,6 +24,44 @@ fn temp_file_path() -> PathBuf {
         .expect("valid time")
         .as_nanos();
     env::temp_dir().join(format!("allure-testplan-{nanos}.json"))
+}
+
+fn temp_results_dir(case_name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("valid time")
+        .as_nanos();
+    env::temp_dir().join(format!("allure-testplan-{case_name}-results-{nanos}"))
+}
+
+fn read_global_errors(results_dir: &std::path::Path) -> Vec<Value> {
+    fs::read_dir(results_dir)
+        .expect("results directory should exist")
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with("-globals.json"))
+        })
+        .flat_map(|path| {
+            let artifact = fs::read_to_string(path).expect("global artifact should be readable");
+            let artifact: Value =
+                serde_json::from_str(&artifact).expect("global artifact should contain valid JSON");
+            artifact
+                .get("errors")
+                .and_then(Value::as_array)
+                .expect("global artifact should contain an errors array")
+                .clone()
+        })
+        .collect()
+}
+
+fn global_error_message(error: &Value) -> &str {
+    error
+        .get("message")
+        .and_then(Value::as_str)
+        .expect("global error should contain a message")
 }
 
 fn with_env_var_disabled() {
@@ -142,6 +181,76 @@ fn returns_none_for_malformed_json() {
     assert!(load_test_plan_from_env("malformed env file").is_none());
 
     let _ = fs::remove_file(path);
+}
+
+#[crate::allure_test]
+#[test]
+#[crate::log_asserts]
+fn reporter_records_malformed_test_plan_as_a_global_error() {
+    allure::description(
+        "Verifies adapter initialization reports malformed configured selection data without creating a synthetic test result.",
+    );
+    let _guard = lock_testplan_env();
+    let path = temp_file_path();
+    let results_dir = temp_results_dir("malformed");
+    write_testplan_file("malformed reporter plan", &path, "not json");
+    with_env_var(&path);
+
+    let _reporter = crate::CargoTestReporter::new(&results_dir)
+        .expect("reporter should remain available after a test-plan error");
+
+    let errors = read_global_errors(&results_dir);
+    assert_eq!(errors.len(), 1);
+    let message = global_error_message(&errors[0]);
+    assert!(message.contains(
+        "Allure test plan initialization failed; test selection was not applied: could not parse test plan JSON"
+    ));
+    assert!(errors[0].get("timestamp").and_then(Value::as_i64).is_some());
+    let has_test_result = fs::read_dir(&results_dir)
+        .expect("results directory should exist")
+        .filter_map(|entry| entry.ok())
+        .any(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.ends_with("-result.json"))
+        });
+    assert!(!has_test_result);
+
+    with_env_var_disabled();
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_dir_all(results_dir);
+}
+
+#[crate::allure_test]
+#[test]
+#[crate::log_asserts]
+fn reporter_records_unreadable_test_plan_as_a_global_error() {
+    allure::description(
+        "Verifies a configured test plan that cannot be read is reported globally while normal test selection remains available.",
+    );
+    let _guard = lock_testplan_env();
+    let path = temp_file_path();
+    let results_dir = temp_results_dir("unreadable");
+    with_env_var(&path);
+
+    let reporter = crate::CargoTestReporter::new(&results_dir)
+        .expect("reporter should remain available after a test-plan error");
+
+    assert!(reporter.is_selected("sample", Some("sample"), None, None));
+    let errors = read_global_errors(&results_dir);
+    assert_eq!(errors.len(), 1);
+    let message = global_error_message(&errors[0]);
+    assert!(message.contains(
+        "Allure test plan initialization failed; test selection was not applied: could not read"
+    ));
+    assert!(message.contains(
+        path.to_str()
+            .expect("temporary test-plan path should be valid UTF-8")
+    ));
+
+    with_env_var_disabled();
+    let _ = fs::remove_dir_all(results_dir);
 }
 
 #[crate::allure_test]

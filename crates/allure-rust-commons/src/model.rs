@@ -1,5 +1,7 @@
 //! Serializable Allure result model types.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::Serialize;
 
 /// Serialized Allure test result.
@@ -99,8 +101,10 @@ pub struct TestResultContainer {
 #[serde(rename_all = "camelCase")]
 pub struct Globals {
     /// Run-level attachments.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<GlobalAttachment>,
     /// Run-level errors.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<GlobalError>,
 }
 
@@ -123,7 +127,56 @@ pub struct GlobalError {
     /// Error message.
     pub message: String,
     /// Optional stack trace or diagnostic text.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub trace: Option<String>,
+    /// Observation timestamp in milliseconds since the Unix epoch.
+    pub timestamp: i64,
+    /// Optional actual value supplied by an assertion error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
+    /// Optional expected value supplied by an assertion error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+}
+
+impl GlobalError {
+    /// Creates a global error observed at the current time.
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            trace: None,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as i64)
+                .unwrap_or_default(),
+            actual: None,
+            expected: None,
+        }
+    }
+
+    /// Overrides the observation timestamp in milliseconds since the Unix epoch.
+    pub fn with_timestamp(mut self, timestamp: i64) -> Self {
+        self.timestamp = timestamp;
+        self
+    }
+
+    /// Adds the original stack trace or diagnostic text.
+    pub fn with_trace(mut self, trace: impl Into<String>) -> Self {
+        self.trace = Some(trace.into());
+        self
+    }
+
+    /// Adds the actual value supplied by an assertion error.
+    pub fn with_actual(mut self, actual: impl Into<String>) -> Self {
+        self.actual = Some(actual.into());
+        self
+    }
+
+    /// Adds the expected value supplied by an assertion error.
+    pub fn with_expected(mut self, expected: impl Into<String>) -> Self {
+        self.expected = Some(expected.into());
+        self
+    }
 }
 
 /// Allure categories file wrapper.

@@ -359,6 +359,22 @@ impl AllureLifecycle {
 
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
         if let Some(mut state) = lock.tests.remove(&test_uuid) {
+            let preserve_failure = matches!(
+                state.test.status.as_ref(),
+                Some(Status::Failed | Status::Broken)
+            ) && matches!(status, Status::Passed);
+            let (status, details) = if preserve_failure {
+                (
+                    state
+                        .test
+                        .status
+                        .take()
+                        .expect("preserved failure status should exist"),
+                    state.test.status_details.take(),
+                )
+            } else {
+                (status, details)
+            };
             finalize_steps(
                 &mut state.step_stack,
                 &mut state.test.steps,
@@ -661,13 +677,19 @@ impl AllureLifecycle {
         message: impl Into<String>,
         trace: Option<String>,
     ) -> std::io::Result<()> {
+        let mut error = GlobalError::new(message);
+        if let Some(trace) = trace {
+            error = error.with_trace(trace);
+        }
+        self.report_global_error(error)
+    }
+
+    /// Writes one independently observed run-level error.
+    pub fn report_global_error(&self, error: GlobalError) -> std::io::Result<()> {
         self.writer
             .write_globals_typed(&Globals {
                 attachments: Vec::new(),
-                errors: vec![GlobalError {
-                    message: message.into(),
-                    trace,
-                }],
+                errors: vec![error],
             })
             .map(|_| ())
     }

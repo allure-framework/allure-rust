@@ -896,14 +896,21 @@ fn selective_run_when_no_tests_selected() {
 #[allure_cargotest::log_asserts]
 fn selective_run_with_malformed_testplan() {
     allure::description(
-        "Verifies malformed test plans fall back to running the full sample suite.",
+        "Verifies malformed test plans run the full sample suite and emit one run-level error instead of synthetic results.",
     );
-    let (results, _, _project_dir) = run_sample_with_testplan("selective", Some("not json"), true);
+    let (results, results_dir, _project_dir) =
+        run_sample_with_testplan("selective", Some("not json"), true);
+    let globals = read_sample_global_errors("selective malformed plan", &results_dir);
 
     assert_eq!(results.len(), 3);
     assert!(results.contains_key("selected_by_name"));
     assert!(results.contains_key("selected_by_id"));
     assert!(results.contains_key("selected_extra"));
+    assert_eq!(globals.len(), 1);
+    assert!(globals[0].contains(
+        "Allure test plan initialization failed; test selection was not applied: could not parse test plan JSON"
+    ));
+    assert!(globals[0].contains("\"timestamp\":"));
 }
 
 #[allure_cargotest::allure_test]
@@ -911,7 +918,7 @@ fn selective_run_with_malformed_testplan() {
 #[allure_cargotest::log_asserts]
 fn selective_run_with_missing_testplan_file_and_env_var() {
     allure::description(
-        "Verifies a missing test-plan file falls back to running the full sample suite.",
+        "Verifies a missing configured test plan runs the full sample suite and emits one run-level error.",
     );
     let mut envs = HashMap::new();
     envs.insert(
@@ -919,12 +926,19 @@ fn selective_run_with_missing_testplan_file_and_env_var() {
         "/tmp/allure-missing-testplan-does-not-exist.json",
     );
 
-    let (results, _, _project_dir) = run_sample_with_env_allow_empty("selective", true, &envs);
+    let (results, results_dir, _project_dir) =
+        run_sample_with_env_allow_empty("selective", true, &envs);
+    let globals = read_sample_global_errors("selective missing plan", &results_dir);
 
     assert_eq!(results.len(), 3);
     assert!(results.contains_key("selected_by_name"));
     assert!(results.contains_key("selected_by_id"));
     assert!(results.contains_key("selected_extra"));
+    assert_eq!(globals.len(), 1);
+    assert!(globals[0].contains(
+        "Allure test plan initialization failed; test selection was not applied: could not read"
+    ));
+    assert!(globals[0].contains("allure-missing-testplan-does-not-exist.json"));
 }
 
 #[allure_cargotest::allure_test]
@@ -1346,6 +1360,32 @@ fn read_sample_results(sample_name: &str, results_dir: &Path) -> HashMap<String,
         let results = read_results_by_test_name_allow_empty(results_dir);
         attach_result_summary(sample_name, &results, results_dir);
         results
+    })
+}
+
+fn read_sample_global_errors(sample_name: &str, results_dir: &Path) -> Vec<String> {
+    allure::step(format!("read {sample_name} global errors"), || {
+        let mut globals = fs::read_dir(results_dir)
+            .expect("results dir should exist")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with("-globals.json"))
+            })
+            .map(|path| fs::read_to_string(path).expect("global artifact should be readable"))
+            .collect::<Vec<_>>();
+        globals.sort_unstable();
+
+        for (index, global) in globals.iter().enumerate() {
+            allure::attachment(
+                format!("{sample_name} global error {}.json", index + 1),
+                "application/json",
+                global.as_bytes(),
+            );
+        }
+        globals
     })
 }
 

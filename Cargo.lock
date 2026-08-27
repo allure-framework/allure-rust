@@ -8,6 +8,7 @@ version = "1.4.0"
 dependencies = [
  "allure-rust-commons",
  "allure-test-macros",
+ "serde_json",
 ]
 
 [[package]]

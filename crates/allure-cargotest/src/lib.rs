@@ -40,7 +40,7 @@ pub mod __private {
         current_allure as common_current_allure, log_asserts_enabled as common_log_asserts_enabled,
         push_current_allure as common_push_current_allure, title_path as common_title_path,
         AllureFacade, AssertUnwindSafe, CargoTestReporter, Context, CurrentAllureGuard,
-        FileSystemResultsWriter, Future, Pin, Poll, ReporterError, StatusDetails, TestPlan,
+        FileSystemResultsWriter, Future, Pin, Poll, ReporterError, StatusDetails,
     };
 
     pub use allure_rust_commons::facade::{
@@ -88,7 +88,7 @@ pub mod __private {
         allure_id: Option<&str>,
         tags: Option<&[&str]>,
     ) -> bool {
-        match TestPlan::from_env() {
+        match super::testplan::active_test_plan() {
             Some(plan) => plan.is_selected(full_name, allure_id, tags),
             None => true,
         }
@@ -229,9 +229,10 @@ impl CargoTestReporter {
 
     fn from_writer(writer: FileSystemResultsWriter) -> Self {
         let runtime = AllureRuntime::new(writer);
+        let allure = AllureFacade::with_lifecycle(runtime.lifecycle());
         Self {
-            allure: AllureFacade::with_lifecycle(runtime.lifecycle()),
-            test_plan: TestPlan::from_env(),
+            test_plan: testplan::load_test_plan_for_reporter(&allure),
+            allure,
         }
     }
 

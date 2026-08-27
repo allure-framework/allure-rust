@@ -116,10 +116,7 @@ fn write_globals_and_typed_write_globals_json() {
                     source: "source.bin".to_string(),
                     content_type: "application/octet-stream".to_string(),
                 }],
-                errors: vec![GlobalError {
-                    message: "boom".to_string(),
-                    trace: None,
-                }],
+                errors: vec![GlobalError::new("boom").with_timestamp(1_787_734_806_302)],
             };
 
             let path_1 = writer

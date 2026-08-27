@@ -116,7 +116,7 @@ The thread-bound facade exports framework-neutral helpers for the common Allure 
 - Evidence: `attachment`, `attachment_path`, `attach_trace`, `http_exchange`, and
   `http_exchange_named`
 - Run-level diagnostics: `global_attachment`, `global_attachment_path`, `global_error`,
-  `global_error_with_trace`
+  `global_error_with_trace`, and `report_global_error`
 
 Runtime attachment and HTTP exchange helpers create an ordered evidence step by default. Adapter
 internals that need exact active-owner attachment placement can use the reporter module:
@@ -129,6 +129,34 @@ fn attach_from_adapter(allure: &AllureFacade) {
     reporter::http_exchange(allure, HttpExchange::new("GET", "https://example.invalid"));
 }
 ```
+
+### Report failures outside test cases
+
+A `TestResult` should represent only a real, independently executable test invocation. When a
+runner reports a final failure outside any concrete test—for example during discovery, global
+setup, container initialization, or global teardown—report it separately with a global error.
+Do not also report a global error when the same event already owns a failed, broken, skipped, or
+aborted test result.
+
+The convenience methods add the observation timestamp automatically. Adapter code can preserve
+structured assertion evidence or a runner-supplied event timestamp with `GlobalError`:
+
+```rust
+use allure_rust_commons::{AllureFacade, GlobalError};
+
+fn report_setup_failure(allure: &AllureFacade) -> std::io::Result<()> {
+    allure.report_global_error(
+        GlobalError::new("Global setup failed: expected and actual environments differed")
+            .with_trace("AssertionError: environment mismatch\n  at global_setup")
+            .with_actual("staging")
+            .with_expected("test"),
+    )
+}
+```
+
+Each call writes a distinct `*-globals.json` artifact through the facade's configured lifecycle
+writer. Classification, retry finality, prevented-test identity, and duplicate ownership remain
+the responsibility of the framework adapter because only the runner knows those facts.
 
 ## HTTP exchange attachments
 
