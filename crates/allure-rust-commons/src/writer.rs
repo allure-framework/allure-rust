@@ -11,6 +11,7 @@ use std::{
 use crate::{
     config::global_config,
     http_exchange::{HTTP_EXCHANGE_ATTACHMENT_EXTENSION, HTTP_EXCHANGE_ATTACHMENT_MIME},
+    ids::next_id,
     model::{Categories, Globals, TestResult, TestResultContainer},
 };
 
@@ -82,9 +83,7 @@ impl FileSystemResultsWriter {
 
     /// Writes a typed globals JSON file for run-level diagnostics.
     pub fn write_globals_typed(&self, globals: &Globals) -> std::io::Result<PathBuf> {
-        let path = self
-            .out_dir
-            .join(format!("{}-globals.json", uuid_like_name()));
+        let path = self.out_dir.join(format!("{}-globals.json", next_id()));
         self.write_json(&path, globals)?;
         Ok(path)
     }
@@ -248,18 +247,6 @@ fn extension_from_content_type(content_type: Option<&str>) -> Option<String> {
         _ => return None,
     };
     Some(ext.to_string())
-}
-
-fn uuid_like_name() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    static COUNTER: AtomicU64 = AtomicU64::new(1);
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or_default();
-    format!("{}-{}", now, COUNTER.fetch_add(1, Ordering::Relaxed))
 }
 
 #[cfg(test)]

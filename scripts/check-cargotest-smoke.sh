@@ -3,6 +3,7 @@ set -euo pipefail
 
 results_dir="${ALLURE_SMOKE_RESULTS_DIR:-target/allure-cargotest-smoke-results}"
 expected_file="${ALLURE_SMOKE_EXPECTED_FULLNAMES:-smokes/allure-cargotest/expected-fullnames.txt}"
+runner="${ALLURE_SMOKE_RUNNER:-cargo}"
 
 case "$results_dir" in
   /* | [A-Za-z]:/* | [A-Za-z]:\\*) ;;
@@ -12,7 +13,19 @@ esac
 rm -rf "$results_dir"
 mkdir -p "$results_dir"
 
-ALLURE_RESULTS_DIR="$results_dir" cargo test --manifest-path smokes/allure-cargotest/Cargo.toml
+case "$runner" in
+  cargo)
+    ALLURE_RESULTS_DIR="$results_dir" cargo test --manifest-path smokes/allure-cargotest/Cargo.toml
+    ;;
+  nextest)
+    # Runs one process per test, so each result file name must stay unique across processes.
+    ALLURE_RESULTS_DIR="$results_dir" cargo nextest run --manifest-path smokes/allure-cargotest/Cargo.toml
+    ;;
+  *)
+    echo "Unknown ALLURE_SMOKE_RUNNER: $runner (expected 'cargo' or 'nextest')" >&2
+    exit 1
+    ;;
+esac
 
 result_list="$(mktemp)"
 actual_file="$(mktemp)"

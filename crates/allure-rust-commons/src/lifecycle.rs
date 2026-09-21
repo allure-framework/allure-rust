@@ -4,16 +4,14 @@ use std::{
     cell::RefCell,
     cmp,
     collections::HashMap,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
     config,
     http_exchange::{HttpExchange, HTTP_EXCHANGE_ATTACHMENT_MIME, HTTP_EXCHANGE_ATTACHMENT_NAME},
+    ids::next_id,
     md5::md5_hex,
     model::{
         Attachment, FixtureResult, GlobalAttachment, GlobalError, Globals, Label, Link, Parameter,
@@ -27,21 +25,11 @@ thread_local! {
     static ACTIVE_SCOPE_ROOT: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
-
 fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or_default()
-}
-
-fn next_id() -> String {
-    format!(
-        "{}-{}",
-        now_millis(),
-        ID_COUNTER.fetch_add(1, Ordering::Relaxed)
-    )
 }
 
 fn round_millis(value: f64) -> i64 {
