@@ -3,7 +3,7 @@ name = "allure-diesel"
 version.workspace = true
 edition.workspace = true
 # Diesel 2.3's instrumentation API requires a newer toolchain than the rest of the
-# workspace, so this crate declares its own MSRV instead of inheriting 1.74.
+# workspace, so this crate declares its own MSRV instead of inheriting 1.85.
 rust-version = "1.86"
 authors.workspace = true
 license.workspace = true
