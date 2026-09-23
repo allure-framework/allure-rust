@@ -15,7 +15,6 @@ pub mod error_classifier;
 pub mod facade;
 /// Allure HTTP Exchange attachment model.
 pub mod http_exchange;
-pub(crate) mod ids;
 /// Low-level lifecycle owner.
 pub mod lifecycle;
 pub(crate) mod md5;

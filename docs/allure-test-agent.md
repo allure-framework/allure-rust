@@ -35,7 +35,7 @@ Do not store the exact Allure version here. Version output is a runtime fact; th
 - Workspace packages: `allure-rust-commons`, `allure-reqwest`, `allure-test-macros`, `allure-cargotest`
 - Test roots: `crates/**/src/*_tests.rs`, `crates/allure-cargotest/tests/e2e.rs`, and `smokes/allure-cargotest/tests/*.rs`
 - Smoke project: `smokes/allure-cargotest` is excluded from the workspace and is exercised by `scripts/check-cargotest-smoke.sh` and by cargotest e2e tests that copy samples into temp projects
-- Allure results paths: default `target/allure-results`; override with `ALLURE_RESULTS_DIR`; smoke script uses `ALLURE_SMOKE_RESULTS_DIR`
+- Allure results paths: default `target/allure-results`; override with `ALLURE_RESULTS_DIR`; smoke script uses `ALLURE_SMOKE_RESULTS_DIR` and picks its runner with `ALLURE_SMOKE_RUNNER` (`cargo` by default, `nextest` for one process per test)
 - Known selector support: Cargo package selection with `-p`, test-name filters after `--`, feature selection with `--features`, and Allure test-plan reruns transported with `ALLURE_TESTPLAN_PATH`
 - Known environments or services needed for tests: local filesystem, nested Cargo runs for cargotest e2e, local HTTP servers for reqwest tests
 
@@ -43,7 +43,7 @@ Do not store the exact Allure version here. Version output is a runtime fact; th
 
 - Existing Allure integrations: `allure-rust-commons` runtime and writer APIs, `allure-cargotest` `#[allure_test]`/`#[step]`/`#[log_asserts]`, `allure-reqwest` HTTP exchange integration, Allure CLI in CI
 - Runner config files: `Cargo.toml`, crate `Cargo.toml` files, `allurerc.mjs`, `.github/workflows/ci.yml`, and `scripts/check-cargotest-smoke.sh`
-- Result-path configuration: `ALLURE_RESULTS_DIR` or default `target/allure-results`; smoke script uses `ALLURE_SMOKE_RESULTS_DIR`
+- Result-path configuration: `ALLURE_RESULTS_DIR` or default `target/allure-results`; smoke script uses `ALLURE_SMOKE_RESULTS_DIR` and `ALLURE_SMOKE_RUNNER`
 - Supported integration configuration targets: `[package.metadata.allure]`, `[package.metadata.allure.labels]`, and `[[package.metadata.allure.modules]]` in Cargo manifests
 - Validation command for integration setup: focused package tests through `allure agent`, full workspace through `allure agent`, and smoke script through `allure agent`
 - Known unsupported or skipped integrations: local agent service and agent-side integration configuration are unsupported
@@ -71,6 +71,7 @@ Use `allure agent` output defaults unless a temporary framework results director
 | reqwest middleware | `TMP_DIR="$(mktemp -d)" && ALLURE_RESULTS_DIR="$TMP_DIR/allure-results" allure agent --goal "<goal>" -- cargo test -p allure-reqwest --all-targets --features middleware` | Validate the optional middleware integration | Only covers the middleware feature profile plus default reqwest tests |
 | cargotest e2e | `TMP_DIR="$(mktemp -d)" && ALLURE_RESULTS_DIR="$TMP_DIR/allure-results" allure agent --goal "<goal>" -- cargo test -p allure-cargotest --all-targets` | Validate macro/test-plan/e2e sample behavior | Nested Cargo runs can be slower and may need dependency cache access |
 | smoke script | `TMP_DIR="$(mktemp -d)" && ALLURE_SMOKE_RESULTS_DIR="$TMP_DIR/smoke-allure-results" allure agent --goal "<goal>" -- bash ./scripts/check-cargotest-smoke.sh` | Validate excluded smoke project full-name contract | Covers the smoke project, not the full workspace |
+| smoke script (nextest) | `TMP_DIR="$(mktemp -d)" && ALLURE_SMOKE_RUNNER=nextest ALLURE_SMOKE_RESULTS_DIR="$TMP_DIR/smoke-allure-results" allure agent --goal "<goal>" -- bash ./scripts/check-cargotest-smoke.sh` | Validate that result files stay unique when every test runs in its own process | Requires `cargo-nextest`; covers the smoke project only |
 
 Add `--expect-tests <count>` or other expectation flags when the exact intended scope is known and the count is current for the change.
 
