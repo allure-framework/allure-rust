@@ -27,6 +27,7 @@ jobs:
       ALLURE_MATRIX_ENV: ${{ matrix.os }}-rust-stable
       ALLURE_TEST_DUMP_NAME: allure-results-${{ matrix.os }}-rust-stable
       ALLURE_SMOKE_DUMP_NAME: allure-results-smoke-${{ matrix.os }}-rust-stable
+      ALLURE_NEXTEST_SMOKE_DUMP_NAME: allure-results-smoke-nextest-${{ matrix.os }}-rust-stable
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -41,6 +42,9 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
 
       - name: Format check
         run: cargo fmt --all -- --check
@@ -84,6 +88,23 @@ jobs:
             --tag="rust:stable" \
             -- bash ./scripts/check-cargotest-smoke.sh
 
+      # Runs one process per test, which is what makes artifact id collisions observable.
+      - name: Run cargotest smoke check under nextest
+        if: always()
+        env:
+          ALLURE_SMOKE_RUNNER: nextest
+          ALLURE_SMOKE_RESULTS_DIR: ${{ github.workspace }}/target/allure-cargotest-smoke-results-nextest/${{ env.ALLURE_MATRIX_ENV }}
+        run: |
+          npx -y allure@3 check \
+            --config ./allurerc.mjs \
+            --dump="${ALLURE_NEXTEST_SMOKE_DUMP_NAME}" \
+            --name="allure-cargotest smoke, nextest (${ALLURE_MATRIX_ENV})" \
+            --tag="environment:${ALLURE_MATRIX_ENV}" \
+            --tag="os:${{ matrix.os }}" \
+            --tag="rust:stable" \
+            --tag="runner:nextest" \
+            -- bash ./scripts/check-cargotest-smoke.sh
+
       - name: Upload Allure test dump
         if: always()
         uses: actions/upload-artifact@v7
@@ -94,6 +115,7 @@ jobs:
           path: |
             ./${{ env.ALLURE_TEST_DUMP_NAME }}.zip
             ./${{ env.ALLURE_SMOKE_DUMP_NAME }}.zip
+            ./${{ env.ALLURE_NEXTEST_SMOKE_DUMP_NAME }}.zip
 
   report:
     needs: [rust]

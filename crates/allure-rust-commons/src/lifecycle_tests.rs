@@ -4,6 +4,7 @@ use crate::{
     test_utils::allure_test,
 };
 use std::{fs, path::PathBuf};
+use uuid::{Uuid, Version};
 
 fn reset_active_roots() {
     ACTIVE_TEST_ROOT.with(|cell| {
@@ -112,6 +113,56 @@ fn test_case_public_methods_are_persisted() {
             assert_eq!(result["parameters"][0]["name"], "browser");
             assert_eq!(result["steps"][0]["name"], "root step");
             assert_eq!(result["steps"][0]["status"], "passed");
+        },
+    );
+}
+
+fn assert_uuid_v4(value: &str) {
+    let parsed = Uuid::parse_str(value)
+        .unwrap_or_else(|error| panic!("{value:?} should be a UUID: {error}"));
+    assert_eq!(
+        parsed.get_version(),
+        Some(Version::Random),
+        "{value:?} should be a version 4 UUID"
+    );
+}
+
+#[test]
+fn generated_artifact_ids_are_uuid_v4() {
+    allure_test(
+        module_path!(),
+        "generated_artifact_ids_are_uuid_v4",
+        "Verifies generated test, container, and attachment ids are random UUIDs, so results from parallel test processes cannot overwrite each other.",
+        || {
+            let (lifecycle, out_dir) = make_lifecycle("generated-artifact-ids");
+
+            lifecycle.start_test_case("uuid-test");
+            let test_uuid = lifecycle
+                .current_test_uuid()
+                .expect("test uuid should exist");
+            let scope_uuid = lifecycle.start_scope(Some("uuid scope".to_string()));
+            lifecycle.link_scope_to_test(&scope_uuid, &test_uuid);
+            lifecycle.add_attachment("trace.txt", "text/plain", b"trace body");
+            lifecycle.stop_scope(&scope_uuid);
+            lifecycle.stop_test_case(Status::Passed, None);
+            lifecycle.write_scope(&scope_uuid);
+
+            assert_uuid_v4(&test_uuid);
+            assert_uuid_v4(&scope_uuid);
+            assert!(out_dir.join(format!("{test_uuid}-result.json")).is_file());
+            assert!(out_dir
+                .join(format!("{scope_uuid}-container.json"))
+                .is_file());
+
+            let results = read_jsons_with_suffix(&out_dir, "-result.json");
+            assert_eq!(results.len(), 1);
+            let source = results[0]["attachments"][0]["source"]
+                .as_str()
+                .expect("attachment source should be a string");
+            let attachment_id = source
+                .strip_suffix("-attachment.txt")
+                .unwrap_or_else(|| panic!("unexpected attachment source {source:?}"));
+            assert_uuid_v4(attachment_id);
         },
     );
 }

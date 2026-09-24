@@ -4,12 +4,11 @@ use std::{
     cell::RefCell,
     cmp,
     collections::HashMap,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use uuid::Uuid;
 
 use crate::{
     config,
@@ -27,21 +26,11 @@ thread_local! {
     static ACTIVE_SCOPE_ROOT: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
-
 fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or_default()
-}
-
-fn next_id() -> String {
-    format!(
-        "{}-{}",
-        now_millis(),
-        ID_COUNTER.fetch_add(1, Ordering::Relaxed)
-    )
 }
 
 fn round_millis(value: f64) -> i64 {
@@ -307,7 +296,7 @@ impl AllureLifecycle {
     pub fn start_test_case(&self, params: impl Into<StartTestCaseParams>) {
         let params = params.into();
         let name = params.name;
-        let uuid = params.uuid.unwrap_or_else(next_id);
+        let uuid = params.uuid.unwrap_or_else(|| Uuid::new_v4().to_string());
         let full_name = params.full_name.or_else(|| Some(name.clone()));
         let mut labels = config::global_labels_from_environment()
             .into_iter()
@@ -492,7 +481,7 @@ impl AllureLifecycle {
 
     /// Starts a fixture/test container scope.
     pub fn start_scope(&self, name: Option<String>) -> String {
-        let uuid = next_id();
+        let uuid = Uuid::new_v4().to_string();
         let mut lock = self.state.lock().expect("poisoned allure lifecycle mutex");
         lock.scopes.insert(
             uuid.clone(),
@@ -596,7 +585,7 @@ impl AllureLifecycle {
     ) {
         let name = name.into();
         let content_type = content_type.into();
-        let id = next_id();
+        let id = Uuid::new_v4().to_string();
         if let Ok((source, _)) =
             self.writer
                 .write_attachment_auto(&id, Some(&name), Some(&content_type), bytes)
@@ -654,7 +643,7 @@ impl AllureLifecycle {
         let name = name.into();
         let content_type = content_type.into();
         let (source, _) = self.writer.write_attachment_auto(
-            &next_id(),
+            &Uuid::new_v4().to_string(),
             Some(&name),
             Some(&content_type),
             bytes,
