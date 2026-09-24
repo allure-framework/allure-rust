@@ -9,13 +9,11 @@ use std::{
     path::Path,
     pin::Pin,
     process::{ExitCode, Termination},
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        OnceLock,
-    },
+    sync::OnceLock,
     task::{Context, Poll},
-    time::{SystemTime, UNIX_EPOCH},
 };
+
+use uuid::Uuid;
 
 use crate::{
     config::{
@@ -30,7 +28,6 @@ use crate::{
 };
 
 static ALLURE: OnceLock<AllureFacade> = OnceLock::new();
-static FACADE_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 thread_local! {
     static CURRENT_ALLURE: RefCell<Option<AllureFacade>> = const { RefCell::new(None) };
@@ -112,15 +109,6 @@ pub fn fail_assertion(
 
 fn active_allure() -> AllureFacade {
     current_allure().unwrap_or_default()
-}
-
-fn facade_id() -> String {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or_default();
-    let counter = FACADE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("{millis}-{counter}")
 }
 
 fn write_globals(globals: Globals) -> std::io::Result<()> {
@@ -1196,7 +1184,7 @@ impl AllureFacade {
 
         let writer = FileSystemResultsWriter::from_env()?;
         let (source, _) = writer.write_attachment_auto(
-            &facade_id(),
+            &Uuid::new_v4().to_string(),
             Some(&name),
             Some(&content_type),
             body.as_ref(),
