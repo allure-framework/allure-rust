@@ -169,6 +169,14 @@ pub struct StartTestCaseParams {
     pub description: Option<String>,
     /// HTML description.
     pub description_html: Option<String>,
+    /// Markdown precondition.
+    pub precondition: Option<String>,
+    /// HTML precondition.
+    pub precondition_html: Option<String>,
+    /// Markdown expected result.
+    pub expected_result: Option<String>,
+    /// HTML expected result.
+    pub expected_result_html: Option<String>,
     /// Initial status.
     pub status: Option<Status>,
     /// Initial status details.
@@ -316,6 +324,10 @@ impl AllureLifecycle {
                     test_case_id: params.test_case_id,
                     description: params.description,
                     description_html: params.description_html,
+                    precondition: params.precondition,
+                    precondition_html: params.precondition_html,
+                    expected_result: params.expected_result,
+                    expected_result_html: params.expected_result_html,
                     status: params.status,
                     status_details: params.status_details,
                     stage: params.stage.or(Some(Stage::Running)),

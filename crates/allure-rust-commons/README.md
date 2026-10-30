@@ -103,11 +103,34 @@ Adapters that need Rust test-style outcome handling can use `test_with_outcome` 
 `()`, nested `Result<T, E>` where `T` is also an Allure outcome, and `ExitCode`, while still
 returning the original value to the test harness.
 
+Preconditions and expected results can be set before a test starts with builders:
+
+```rust
+use allure_rust_commons::{test_with, TestOptions};
+
+test_with(
+    TestOptions::new("dashboard")
+        .with_precondition("User is logged in")
+        .with_expected_result("Dashboard is displayed"),
+    || {
+        // Test actions and assertions.
+    },
+);
+```
+
+During a test, use `precondition(...)` and `expected_result(...)` on the current facade or
+as free functions. Builders also provide `with_precondition_html(...)` and
+`with_expected_result_html(...)`; runtime helpers provide `precondition_html(...)` and
+`expected_result_html(...)`. Markdown and HTML values are independent. These APIs only set
+report metadata: they do not perform setup or assert the outcome. The serialized fields are
+`precondition`, `preconditionHtml`, `expectedResult`, and `expectedResultHtml`.
+
 ## Runtime facade
 
 The thread-bound facade exports framework-neutral helpers for the common Allure concepts:
 
-- Metadata: `display_name`, `description`, `description_html`, `history_id`, `test_case_id`,
+- Metadata: `display_name`, `description`, `description_html`, `precondition`,
+  `precondition_html`, `expected_result`, `expected_result_html`, `history_id`, `test_case_id`,
   `id`, `allure_id`
 - Labels and links: `label`, `labels`, `epic`, `feature`, `story`, `suite`, `parent_suite`,
   `sub_suite`, `owner`, `severity`, `tag`, `tags`, `link`, `links`, `issue`, `tms`

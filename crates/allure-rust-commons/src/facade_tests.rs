@@ -120,3 +120,110 @@ fn enter_step_defaults_to_passed() {
     assert_eq!(result["steps"][0]["name"], "plain step");
     assert_eq!(result["steps"][0]["status"], "passed");
 }
+
+#[test]
+fn builders_initialize_preconditions_and_expected_results() {
+    allure_test(
+        module_path!(),
+        "builders_initialize_preconditions_and_expected_results",
+        "Verifies TestOptions initializes independent Markdown and HTML preconditions and expected results in result JSON.",
+        || {
+            let (allure, out_dir) = make_facade("builder-preconditions");
+            let options = TestOptions::new("dashboard")
+                .with_description("Dashboard test")
+                .with_precondition("User is logged in".to_string())
+                .with_precondition_html("<p>User is logged in</p>")
+                .with_expected_result("Dashboard is displayed")
+                .with_expected_result_html("<p>Dashboard is displayed</p>".to_string());
+
+            step("Start and finish a test with initial report fields", || {
+                allure.start_test_case(options.params);
+                allure.stop_test_case(Status::Passed, None);
+            });
+
+            let result = read_result(&out_dir);
+            attachment("result.json", "application/json", result.to_string());
+            assert_eq!(result["description"], "Dashboard test");
+            assert_eq!(result["precondition"], "User is logged in");
+            assert_eq!(result["preconditionHtml"], "<p>User is logged in</p>");
+            assert_eq!(result["expectedResult"], "Dashboard is displayed");
+            assert_eq!(result["expectedResultHtml"], "<p>Dashboard is displayed</p>");
+        },
+    );
+}
+
+#[test]
+fn facade_updates_preconditions_and_expected_results() {
+    allure_test(
+        module_path!(),
+        "facade_updates_preconditions_and_expected_results",
+        "Verifies runtime metadata replaces initial values while preserving paired formats and descriptions.",
+        || {
+            let (allure, out_dir) = make_facade("runtime-preconditions");
+            allure.start_test_case(
+                TestOptions::new("dashboard")
+                    .with_description("Dashboard test")
+                    .with_description_html("<p>Dashboard test</p>")
+                    .with_precondition("Initial precondition")
+                    .with_precondition_html("<p>Initial precondition</p>")
+                    .with_expected_result("Initial expected result")
+                    .with_expected_result_html("<p>Initial expected result</p>")
+                    .params,
+            );
+
+            step("Replace report fields during test execution", || {
+                allure.precondition_html("<p>User is logged in</p>");
+                allure.precondition("User is logged in");
+                allure.expected_result_html("<p>Dashboard is displayed</p>");
+                allure.expected_result("");
+                allure.stop_test_case(Status::Passed, None);
+            });
+
+            let result = read_result(&out_dir);
+            attachment("result.json", "application/json", result.to_string());
+            assert_eq!(result["description"], "Dashboard test");
+            assert_eq!(result["descriptionHtml"], "<p>Dashboard test</p>");
+            assert_eq!(result["precondition"], "User is logged in");
+            assert_eq!(result["preconditionHtml"], "<p>User is logged in</p>");
+            assert_eq!(result["expectedResult"], "");
+            assert_eq!(result["expectedResultHtml"], "<p>Dashboard is displayed</p>");
+        },
+    );
+}
+
+#[test]
+fn free_helpers_update_current_test_preconditions_and_expected_results() {
+    allure_test(
+        module_path!(),
+        "free_helpers_update_current_test_preconditions_and_expected_results",
+        "Verifies exported helpers update the thread-bound test and safely ignore an inactive facade.",
+        || {
+            let (allure, out_dir) = make_facade("free-preconditions");
+            allure.start_test_case(StartTestCaseParams::new("dashboard"));
+
+            step("Set report fields through exported helpers", || {
+                let _current = push_current_allure(&allure);
+                crate::precondition("User is logged in");
+                crate::precondition_html("<p>User is logged in</p>");
+                crate::expected_result("Dashboard is displayed");
+                crate::expected_result_html("<p>Dashboard is displayed</p>");
+            });
+            step("Ignore metadata calls on an inactive facade", || {
+                let inactive = AllureFacade::default();
+                let _current = push_current_allure(&inactive);
+                crate::precondition("ignored");
+                crate::precondition_html("ignored");
+                crate::expected_result("ignored");
+                crate::expected_result_html("ignored");
+            });
+            allure.stop_test_case(Status::Passed, None);
+
+            let result = read_result(&out_dir);
+            attachment("result.json", "application/json", result.to_string());
+            assert_eq!(result["precondition"], "User is logged in");
+            assert_eq!(result["preconditionHtml"], "<p>User is logged in</p>");
+            assert_eq!(result["expectedResult"], "Dashboard is displayed");
+            assert_eq!(result["expectedResultHtml"], "<p>Dashboard is displayed</p>");
+        },
+    );
+}
