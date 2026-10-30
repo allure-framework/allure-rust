@@ -78,6 +78,8 @@ Implemented runtime facade APIs include:
 
 - **Test lifecycle**: `start_test_case`, `stop_test_case` (plus compatibility aliases `start_test`, `start_test_with_full_name`, `end_test`)
 - **Descriptions**: `description`, `description_html`
+- **Preconditions and expected results**: `precondition`, `precondition_html`,
+  `expected_result`, `expected_result_html` (report metadata, not setup or assertions)
 - **Labels and identity**: `label`, `labels`, `epic`, `feature`, `story`, `suite`,
   `parent_suite`, `sub_suite`, `owner`, `severity`, `layer`, `tag`, `tags`, `id`,
   `allure_id`, `display_name`, `history_id`, `test_case_id`

@@ -193,6 +193,30 @@ impl TestOptions {
         self
     }
 
+    /// Sets the markdown precondition.
+    pub fn with_precondition(mut self, precondition: impl Into<String>) -> Self {
+        self.params.precondition = Some(precondition.into());
+        self
+    }
+
+    /// Sets the HTML precondition.
+    pub fn with_precondition_html(mut self, precondition_html: impl Into<String>) -> Self {
+        self.params.precondition_html = Some(precondition_html.into());
+        self
+    }
+
+    /// Sets the markdown expected result.
+    pub fn with_expected_result(mut self, expected_result: impl Into<String>) -> Self {
+        self.params.expected_result = Some(expected_result.into());
+        self
+    }
+
+    /// Sets the HTML expected result.
+    pub fn with_expected_result_html(mut self, expected_result_html: impl Into<String>) -> Self {
+        self.params.expected_result_html = Some(expected_result_html.into());
+        self
+    }
+
     /// Adds an initial label.
     pub fn with_label(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.params.labels.push(Label {
@@ -675,6 +699,26 @@ pub fn description_html(description: impl Into<String>) {
     active_allure().description_html(description);
 }
 
+/// Sets the markdown precondition on the current test.
+pub fn precondition(precondition: impl Into<String>) {
+    active_allure().precondition(precondition);
+}
+
+/// Sets the HTML precondition on the current test.
+pub fn precondition_html(precondition_html: impl Into<String>) {
+    active_allure().precondition_html(precondition_html);
+}
+
+/// Sets the markdown expected result on the current test.
+pub fn expected_result(expected_result: impl Into<String>) {
+    active_allure().expected_result(expected_result);
+}
+
+/// Sets the HTML expected result on the current test.
+pub fn expected_result_html(expected_result_html: impl Into<String>) {
+    active_allure().expected_result_html(expected_result_html);
+}
+
 /// Sets the display name of the current test.
 pub fn display_name(name: impl Into<String>) {
     active_allure().display_name(name);
@@ -1015,6 +1059,34 @@ impl AllureFacade {
     pub fn description_html(&self, description: impl Into<String>) {
         if let Some(l) = &self.lifecycle {
             l.update_test_case(|t| t.description_html = Some(description.into()));
+        }
+    }
+
+    /// Sets the markdown precondition on the current test.
+    pub fn precondition(&self, precondition: impl Into<String>) {
+        if let Some(l) = &self.lifecycle {
+            l.update_test_case(|t| t.precondition = Some(precondition.into()));
+        }
+    }
+
+    /// Sets the HTML precondition on the current test.
+    pub fn precondition_html(&self, precondition_html: impl Into<String>) {
+        if let Some(l) = &self.lifecycle {
+            l.update_test_case(|t| t.precondition_html = Some(precondition_html.into()));
+        }
+    }
+
+    /// Sets the markdown expected result on the current test.
+    pub fn expected_result(&self, expected_result: impl Into<String>) {
+        if let Some(l) = &self.lifecycle {
+            l.update_test_case(|t| t.expected_result = Some(expected_result.into()));
+        }
+    }
+
+    /// Sets the HTML expected result on the current test.
+    pub fn expected_result_html(&self, expected_result_html: impl Into<String>) {
+        if let Some(l) = &self.lifecycle {
+            l.update_test_case(|t| t.expected_result_html = Some(expected_result_html.into()));
         }
     }
 
