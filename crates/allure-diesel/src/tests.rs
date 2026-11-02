@@ -12,13 +12,22 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-#[derive(QueryableByName, Debug)]
-struct User {
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    id: i32,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    name: String,
+// QueryableByName emits redundant field initializers in a generated impl, so the
+// lint allowance must cover the expansion rather than just the struct.
+#[allow(clippy::redundant_field_names)]
+mod queryable_by_name {
+    use diesel::QueryableByName;
+
+    #[derive(QueryableByName, Debug)]
+    pub(super) struct User {
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        pub(super) id: i32,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        pub(super) name: String,
+    }
 }
+
+use queryable_by_name::User;
 
 diesel::table! {
     dao_users (id) {
