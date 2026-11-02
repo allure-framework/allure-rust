@@ -22,6 +22,14 @@ pub struct TestResult {
     pub description: Option<String>,
     /// HTML description.
     pub description_html: Option<String>,
+    /// Markdown precondition.
+    pub precondition: Option<String>,
+    /// HTML precondition.
+    pub precondition_html: Option<String>,
+    /// Markdown expected result.
+    pub expected_result: Option<String>,
+    /// HTML expected result.
+    pub expected_result_html: Option<String>,
     /// Final test status.
     pub status: Option<Status>,
     /// Details associated with the final test status.

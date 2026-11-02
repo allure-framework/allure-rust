@@ -577,6 +577,10 @@ fn start_test_case_accepts_optional_test_result_fields() {
                 test_case_id: Some("custom-case".to_string()),
                 description: Some("markdown".to_string()),
                 description_html: Some("<p>html</p>".to_string()),
+                precondition: Some("User is logged in".to_string()),
+                precondition_html: Some("<p>User is logged in</p>".to_string()),
+                expected_result: Some("Dashboard is displayed".to_string()),
+                expected_result_html: Some("<p>Dashboard is displayed</p>".to_string()),
                 status: Some(Status::Skipped),
                 status_details: Some(StatusDetails {
                     message: Some("preset".to_string()),
@@ -624,6 +628,10 @@ fn start_test_case_accepts_optional_test_result_fields() {
             assert_eq!(result["testCaseId"], "custom-case");
             assert_eq!(result["description"], "markdown");
             assert_eq!(result["descriptionHtml"], "<p>html</p>");
+            assert_eq!(result["precondition"], "User is logged in");
+            assert_eq!(result["preconditionHtml"], "<p>User is logged in</p>");
+            assert_eq!(result["expectedResult"], "Dashboard is displayed");
+            assert_eq!(result["expectedResultHtml"], "<p>Dashboard is displayed</p>");
             assert_eq!(result["status"], "passed");
             assert!(contains_label(result, "suite", "commons"));
             assert_eq!(result["links"][0]["name"], "docs");
