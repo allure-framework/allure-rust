@@ -314,11 +314,16 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
             .unwrap_or(body_index);
     }
 
+    let allure_id_expr = attrs
+        .id
+        .as_ref()
+        .map(|id| format!("Some({id:?})"))
+        .unwrap_or_else(|| "None".to_string());
     let wrapped_body_src = if should_panic.enabled && is_async {
         format!(
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
-  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
+  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), {allure_id_expr}, None) {{
     {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
@@ -327,6 +332,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
+  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+    {skipped_return}
+  }}
   return ::allure_cargotest::__private::test_with_outcome_async(__allure_options, async move {{
     let allure = ::allure_cargotest::__private::current_allure()
       .expect(\"allure context should be available\");
@@ -353,7 +362,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         format!(
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
-  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
+  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), {allure_id_expr}, None) {{
     {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
@@ -362,6 +371,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
+  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+    {skipped_return}
+  }}
   return ::allure_cargotest::__private::test_with_outcome(__allure_options, || -> () {{
     let allure = ::allure_cargotest::__private::current_allure()
       .expect(\"allure context should be available\");
@@ -395,7 +408,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         format!(
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
-  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
+  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), {allure_id_expr}, None) {{
     {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
@@ -404,6 +417,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
+  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+    {skipped_return}
+  }}
   let __allure_runtime_test = ::allure_cargotest::__private::start_runtime_test_with_options(__allure_options);
   let __allure_result = ::allure_cargotest::__private::run_runtime_test_future(
     &__allure_runtime_test,
@@ -421,7 +438,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         format!(
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
-  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
+  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), {allure_id_expr}, None) {{
     {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
@@ -430,6 +447,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
+  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+    {skipped_return}
+  }}
   return ::allure_cargotest::__private::test_with_outcome_async(__allure_options, async move {{
     let __allure_output: {test_return_type} = {{
       let allure = ::allure_cargotest::__private::current_allure()
@@ -452,7 +473,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         format!(
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
-  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
+  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), {allure_id_expr}, None) {{
     {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
@@ -461,6 +482,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
+  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+    {skipped_return}
+  }}
   let __allure_runtime_test = ::allure_cargotest::__private::start_runtime_test_with_options(__allure_options);
   let __allure_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe({sync_closure_src}));
   match __allure_result {{
@@ -473,7 +498,7 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
         format!(
             "{{
   let __allure_full_name = format!(\"{{}}::{{}}\", module_path!(), {fn_name:?});
-  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), None, None) {{
+  if !::allure_cargotest::__private::is_selected(Some(&__allure_full_name), {allure_id_expr}, None) {{
     {skipped_return}
   }}
   let __allure_options = ::allure_cargotest::__private::TestOptions::new({test_name:?})
@@ -482,6 +507,10 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
+  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+    {skipped_return}
+  }}
   return ::allure_cargotest::__private::test_with_outcome(__allure_options, || -> {test_return_type} {{
     let allure = ::allure_cargotest::__private::current_allure()
       .expect(\"allure context should be available\");

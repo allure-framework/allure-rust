@@ -331,3 +331,65 @@ fn explicit_adapter_id_takes_precedence_over_tag_fallback() {
     let tags = ["@allure.id=A-2"];
     assert!(!plan.is_selected(None, Some("B-1"), Some(&tags)));
 }
+
+#[crate::allure_test]
+#[test]
+#[crate::log_asserts]
+fn muted_only_plans_leave_selection_unrestricted() {
+    for input in [
+        r#"{"mutedTests":[{"id":42}]}"#,
+        r#"{"tests":[],"mutedTests":[{"id":"42"}]}"#,
+    ] {
+        let plan = parse_test_plan_input("muted only", input).expect("valid muted plan");
+        assert!(plan.is_selected(None, None, None));
+        assert!(plan.is_muted(None, Some("42"), None));
+        assert!(!plan.is_muted(None, None, None));
+    }
+}
+
+#[crate::allure_test]
+#[test]
+#[crate::log_asserts]
+fn muting_matches_either_identity_without_expanding_selection() {
+    let plan = parse_test_plan_input(
+        "independent selection and muting",
+        r#"{"tests":[{"id":42}],"mutedTests":[{}, {"id":"42","selector":"suite::case"}]}"#,
+    )
+    .expect("valid plan");
+    assert!(plan.is_selected(None, Some("42"), None));
+    assert!(!plan.is_selected(Some("suite::case"), Some("other"), None));
+    assert!(plan.is_muted(Some("suite::case"), Some("other"), None));
+    assert!(plan.is_muted(None, None, Some(&["@allure.id=42"])));
+    assert!(plan.is_muted(None, None, Some(&["@allure.id:42"])));
+    assert!(!plan.is_muted(None, Some("other"), Some(&["@allure.id=42"])));
+    assert!(!plan.is_muted(None, None, None));
+}
+
+#[crate::allure_test]
+#[test]
+#[crate::log_asserts]
+fn selectors_preserve_spaces_and_json_escapes() {
+    let plan = parse_test_plan_input(
+        "literal selector",
+        r#"{"tests":[{"selector":"suite::a [\"b\"] {c}"}],"mutedTests":[{"selector":"suite::a [\"b\"] {c}"}]}"#,
+    ).expect("valid plan");
+    assert!(plan.is_selected(Some("suite::a [\"b\"] {c}"), None, None));
+    assert!(plan.is_muted(Some("suite::a [\"b\"] {c}"), None, None));
+    assert!(!plan.is_muted(Some("suite::a[\"b\"]{c}"), None, None));
+}
+
+#[crate::allure_test]
+#[test]
+#[crate::log_asserts]
+fn malformed_collections_do_not_become_unrestricted_plans() {
+    for input in [
+        r#"{"tests":null,"mutedTests":[{"id":42}]}"#,
+        r#"{"tests":{},"mutedTests":[{"id":42}]}"#,
+        r#"{"tests":[false],"mutedTests":[]}"#,
+        r#"{"tests":[],"mutedTests":{}}"#,
+        r#"{"mutedTests":[{"id":true}]}"#,
+        r#"{"mutedTests":[{"selector":42}]}"#,
+    ] {
+        assert!(parse_test_plan_input("malformed collection", input).is_none());
+    }
+}

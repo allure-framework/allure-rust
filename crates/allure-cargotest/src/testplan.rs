@@ -11,6 +11,8 @@ pub struct TestPlan {
     pub version: Option<String>,
     /// Entries included in the plan.
     pub tests: Vec<TestPlanEntry>,
+    /// Entries whose selected test bodies must not execute.
+    pub muted_tests: Vec<TestPlanEntry>,
 }
 
 /// Minimal test entry shape used for matching test execution.
@@ -51,16 +53,40 @@ impl TestPlan {
     ) -> bool {
         let effective_id = effective_allure_id(allure_id, tags);
 
-        self.tests.iter().any(|entry| {
-            if let Some(entry_id) = entry.id.as_deref() {
-                return effective_id.is_some_and(|candidate| candidate == entry_id);
-            }
+        self.tests.is_empty()
+            || self.tests.iter().any(|entry| {
+                if let Some(entry_id) = entry.id.as_deref() {
+                    return effective_id.is_some_and(|candidate| candidate == entry_id);
+                }
 
+                entry
+                    .selector
+                    .as_deref()
+                    .zip(full_name)
+                    .is_some_and(|(selector, identity)| selector == identity)
+            })
+    }
+    /// Returns whether either the effective ID or exact selector matches a muted entry.
+    ///
+    /// Explicit IDs override tag-derived IDs. Muting does not affect selection.
+    pub fn is_muted(
+        &self,
+        full_name: Option<&str>,
+        allure_id: Option<&str>,
+        tags: Option<&[&str]>,
+    ) -> bool {
+        let effective_id = effective_allure_id(allure_id, tags);
+        self.muted_tests.iter().any(|entry| {
             entry
-                .selector
+                .id
                 .as_deref()
-                .zip(full_name)
-                .is_some_and(|(selector, identity)| selector == identity)
+                .zip(effective_id)
+                .is_some_and(|(id, candidate)| id == candidate)
+                || entry
+                    .selector
+                    .as_deref()
+                    .zip(full_name)
+                    .is_some_and(|(selector, identity)| selector == identity)
         })
     }
 }
@@ -132,62 +158,47 @@ fn report_test_plan_error(
 }
 
 fn parse_test_plan(input: &str) -> Option<TestPlan> {
-    let compact: String = input.chars().filter(|c| !c.is_whitespace()).collect();
-    if !compact.starts_with('{') || !compact.ends_with('}') {
+    let value: serde_json::Value = serde_json::from_str(input).ok()?;
+    let object = value.as_object()?;
+    let version = object
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+    let tests = parse_entries(object.get("tests"))?;
+    let muted_tests = parse_entries(object.get("mutedTests"))?;
+    if tests.is_empty() && muted_tests.is_empty() {
         return None;
     }
-
-    if !compact.contains("\"tests\":") {
-        return None;
-    }
-
-    let version = extract_string_field(&compact, "version");
-    let tests_blob = extract_array_field(&compact, "tests")?;
-    let tests = parse_tests_array(tests_blob)?;
-    if tests.is_empty() {
-        return None;
-    }
-
-    Some(TestPlan { version, tests })
+    Some(TestPlan {
+        version,
+        tests,
+        muted_tests,
+    })
 }
 
-fn parse_tests_array(tests_blob: &str) -> Option<Vec<TestPlanEntry>> {
-    let mut tests = Vec::new();
-    let mut depth = 0usize;
-    let mut start = None;
-
-    for (idx, ch) in tests_blob.char_indices() {
-        match ch {
-            '{' => {
-                if depth == 0 {
-                    start = Some(idx);
-                }
-                depth += 1;
-            }
-            '}' => {
-                if depth == 0 {
-                    return None;
-                }
-                depth -= 1;
-                if depth == 0 {
-                    let object_start = start?;
-                    let object = &tests_blob[object_start..=idx];
-                    tests.push(TestPlanEntry {
-                        id: extract_string_field(object, "id"),
-                        selector: extract_string_field(object, "selector"),
-                    });
-                    start = None;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if depth != 0 {
-        return None;
-    }
-
-    Some(tests)
+fn parse_entries(value: Option<&serde_json::Value>) -> Option<Vec<TestPlanEntry>> {
+    let Some(value) = value else {
+        return Some(Vec::new());
+    };
+    value
+        .as_array()?
+        .iter()
+        .map(|value| {
+            let entry = value.as_object()?;
+            let id = match entry.get("id") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(id)) => Some(id.clone()),
+                Some(serde_json::Value::Number(id)) => Some(id.to_string()),
+                _ => return None,
+            };
+            let selector = match entry.get("selector") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(selector)) => Some(selector.clone()),
+                _ => return None,
+            };
+            Some(TestPlanEntry { id, selector })
+        })
+        .collect()
 }
 
 fn effective_allure_id<'a>(
@@ -203,35 +214,6 @@ fn allure_id_from_tags<'a>(tags: &'a [&'a str]) -> Option<&'a str> {
             .or_else(|| tag.strip_prefix("@allure.id:"))
             .filter(|value| !value.is_empty())
     })
-}
-
-fn extract_array_field<'a>(json: &'a str, field_name: &str) -> Option<&'a str> {
-    let key = format!("\"{field_name}\":[");
-    let start = json.find(&key)? + key.len();
-    let mut depth = 1usize;
-
-    for (offset, ch) in json[start..].char_indices() {
-        match ch {
-            '[' => depth += 1,
-            ']' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(&json[start..start + offset]);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-
-fn extract_string_field(json: &str, field_name: &str) -> Option<String> {
-    let key = format!("\"{field_name}\":\"");
-    let start = json.find(&key)? + key.len();
-    let rest = &json[start..];
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
 }
 
 #[cfg(test)]

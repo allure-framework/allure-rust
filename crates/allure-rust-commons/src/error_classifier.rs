@@ -25,6 +25,7 @@ pub fn classify_message(message: impl Into<String>) -> (Status, StatusDetails) {
     (
         get_status_from_error(&message),
         StatusDetails {
+            muted: false,
             message: Some(message),
             trace: None,
             actual: None,

@@ -94,6 +94,24 @@ pub mod __private {
         }
     }
 
+    pub fn is_muted(
+        full_name: Option<&str>,
+        allure_id: Option<&str>,
+        tags: Option<&[&str]>,
+    ) -> bool {
+        super::testplan::active_test_plan()
+            .is_some_and(|plan| plan.is_muted(full_name, allure_id, tags))
+    }
+
+    pub fn skip_muted_test(options: TestOptions) {
+        let runtime_test = start_runtime_test_with_options(options);
+        finish_runtime_test_status(
+            runtime_test,
+            super::Status::Skipped,
+            Some(super::muted_status_details()),
+        );
+    }
+
     pub fn clear_last_assertion_failure() {
         allure_rust_commons::clear_last_assertion_failure();
     }
@@ -273,6 +291,9 @@ impl CargoTestReporter {
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
         apply_synthetic_suite_labels(&self.allure, full_name);
+        if self.skip_if_muted(full_name, allure_id, tags) {
+            return;
+        }
         let _current_allure = __private::push_current_allure(&self.allure);
         let result = catch_unwind(AssertUnwindSafe(|| f(&self.allure)));
         match result {
@@ -318,6 +339,9 @@ impl CargoTestReporter {
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
         apply_synthetic_suite_labels(&self.allure, full_name);
+        if self.skip_if_muted(full_name, allure_id, tags) {
+            return;
+        }
         let result = __private::run_with_current_allure(self.allure.clone(), future).await;
         match result {
             Ok(_) => self.allure.end_test(Status::Passed, None),
@@ -346,15 +370,40 @@ impl CargoTestReporter {
         }
     }
 
+    fn skip_if_muted(
+        &self,
+        full_name: Option<&str>,
+        allure_id: Option<&str>,
+        tags: Option<&[&str]>,
+    ) -> bool {
+        if self
+            .test_plan
+            .as_ref()
+            .is_some_and(|plan| plan.is_muted(full_name, allure_id, tags))
+        {
+            self.allure
+                .end_test(Status::Skipped, Some(muted_status_details()));
+            true
+        } else {
+            false
+        }
+    }
+
     /// Runs a synchronous test body that returns its final Allure result state.
     pub fn run_test_with_result<F>(&self, name: &str, f: F)
     where
         F: FnOnce(&AllureFacade) -> (Status, Option<StatusDetails>, Option<Box<dyn Any + Send>>),
     {
+        if !self.is_selected(name, Some(name), None, None) {
+            return;
+        }
         self.allure.start_test(name);
         __private::clear_last_assertion_failure();
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
+        if self.skip_if_muted(Some(name), None, None) {
+            return;
+        }
         let _current_allure = __private::push_current_allure(&self.allure);
         let (status, details, panic_payload) = f(&self.allure);
         self.allure.end_test(status, details);
@@ -368,10 +417,16 @@ impl CargoTestReporter {
     where
         F: Future<Output = (Status, Option<StatusDetails>, Option<Box<dyn Any + Send>>)>,
     {
+        if !self.is_selected(name, Some(name), None, None) {
+            return;
+        }
         self.allure.start_test(name);
         __private::clear_last_assertion_failure();
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
+        if self.skip_if_muted(Some(name), None, None) {
+            return;
+        }
         let result = __private::run_with_current_allure(self.allure.clone(), future).await;
         match result {
             Ok((status, details, panic_payload)) => {
@@ -389,6 +444,14 @@ impl CargoTestReporter {
                 std::panic::resume_unwind(payload);
             }
         }
+    }
+}
+
+fn muted_status_details() -> StatusDetails {
+    StatusDetails {
+        muted: true,
+        message: Some("Skipped by Allure test plan".to_string()),
+        ..StatusDetails::default()
     }
 }
 

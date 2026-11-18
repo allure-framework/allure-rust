@@ -110,13 +110,41 @@ Override the default results directory with `ALLURE_RESULTS_DIR`:
 ALLURE_RESULTS_DIR=./allure-results cargo test
 ```
 
-## Configure test-plan selection
+## Configure test-plan selection and muting
 
 Set `ALLURE_TESTPLAN_PATH` to an Allure test-plan JSON file to run only matching test identities:
 
 ```bash
 ALLURE_TESTPLAN_PATH=./testplan.json cargo test
 ```
+
+A plan can select tests with `tests` and skip selected test bodies with `mutedTests`:
+
+```json
+{
+  "version": "1.0",
+  "tests": [{ "selector": "api::login_works" }],
+  "mutedTests": [{ "id": 42, "selector": "api::login_works" }]
+}
+```
+
+Omitted or empty `tests` leaves selection unrestricted. `mutedTests` never adds tests to the
+selection. A muted entry matches either its string or numeric ID, or its exact full-name
+selector. Selectors preserve spaces and JSON escapes; they are not patterns. Explicit IDs
+(`#[allure_test(id = "42")]` or manual reporter metadata) take precedence over IDs from
+`@allure.id=42` / `@allure.id:42` tags supplied to manual reporter metadata. Identity set only
+inside a test body cannot be used for pre-execution matching.
+
+Selected muted tests emit ordinary results with `status: "skipped"`,
+`statusDetails.muted: true`, and reason `Skipped by Allure test plan`. Static macro metadata,
+including full name, display name, ID, description, and configured labels, is retained.
+The body does not execute, async bodies are not polled, and expected-panic checks and custom
+`Termination::report` are bypassed. This applies to macro tests and all `CargoTestReporter`
+execution methods. Native `#[ignore]` behavior remains controlled by the Rust harness.
+
+Cargo reports a successful invocation for a muted test, not a dynamically ignored test:
+stable libtest has no dynamic-ignore API. Runtime setup outside the Allure wrapper, such as
+Tokio runtime initialization, may still occur. Unselected tests emit no Allure result.
 
 The adapter loads the plan once for a macro-driven test process and once when a manual
 `CargoTestReporter` is created. If a configured file cannot be read or parsed, selection is not
