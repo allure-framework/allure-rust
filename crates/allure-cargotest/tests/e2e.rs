@@ -874,8 +874,9 @@ fn selective_run_when_multiple_tests_selected() {
         r#"{"version":"1.0","tests":[{"selector":"allure::selected_by_name"},{"id":"A-2"}]}"#;
     let (results, _, _project_dir) = run_sample_with_testplan("selective", Some(testplan), true);
 
-    assert_eq!(results.len(), 1);
+    assert_eq!(results.len(), 2);
     assert!(results.contains_key("selected_by_name"));
+    assert!(results.contains_key("selected_by_id"));
 }
 
 #[allure_cargotest::allure_test]
@@ -978,6 +979,121 @@ fn keeps_metadata_linked_to_the_right_test_when_running_concurrently() {
     assert!(!contains_label(second, "component", "alpha"));
     assert!(!second.contains("\"value\":\"alpha\""));
     assert!(!second.contains("https://example.test/alpha"));
+}
+
+const MUTED_MACRO_CASES: &[&str] = &[
+    "sync_unit",
+    "async_unit",
+    "sync_panic",
+    "async_panic",
+    "sync_result",
+    "async_result",
+    "sync_termination",
+    "async_termination",
+    "sync_opaque",
+    "async_opaque",
+];
+
+fn muted_entries() -> Vec<serde_json::Value> {
+    let mut entries: Vec<_> = MUTED_MACRO_CASES
+        .iter()
+        .map(|name| serde_json::json!({"selector": format!("allure::{name}")}))
+        .collect();
+    // Numeric ID matching, including when the selector disagrees.
+    entries[0] = serde_json::json!({"id": 42, "selector": "not::sync_unit"});
+    entries.extend([
+        serde_json::json!({"selector": "manual_plain"}),
+        serde_json::json!({"id": 51}),
+        serde_json::json!({"id": "52"}),
+        serde_json::json!({"selector": "manual_result"}),
+        serde_json::json!({"selector": "manual::async"}),
+        serde_json::json!({"selector": "manual_async_result"}),
+        serde_json::json!({"selector": "allure::user_ignored"}),
+    ]);
+    entries
+}
+
+fn run_muted_sample(plan: serde_json::Value) -> (HashMap<String, String>, TempProjectDir) {
+    let sample_name = "tokio_async_muted";
+    let project = prepare_sample_project_step(sample_name);
+    let results_dir = project.path().join("allure-results");
+    let path = write_sample_testplan(sample_name, project.path(), &plan.to_string());
+    let envs = HashMap::from([("ALLURE_TESTPLAN_PATH", path.to_str().unwrap())]);
+
+    let output = run_cargo_test(sample_name, project.path(), &results_dir, &envs);
+
+    assert!(
+        output.status.success(),
+        "muted invocations must succeed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!project.path().join("body-executed").exists());
+    assert!(!project.path().join("termination-reported").exists());
+    (read_sample_results(sample_name, &results_dir), project)
+}
+
+#[allure_cargotest::allure_test]
+#[test]
+#[allure_cargotest::log_asserts]
+fn muted_only_plan_skips_all_execution_paths_and_retains_metadata() {
+    let plan = serde_json::json!({"version": "1.0", "excludedTests": muted_entries()});
+
+    let (results, project) = run_muted_sample(plan);
+
+    assert_eq!(results.len(), 17);
+    assert!(project.path().join("control-executed").exists());
+    assert!(!results.contains_key("user_ignored"));
+    for (name, raw) in &results {
+        let result: serde_json::Value = serde_json::from_str(raw).unwrap();
+        if name == "control" {
+            assert_eq!(result["status"], "passed");
+            assert!(result["statusDetails"].get("muted").is_none());
+        } else {
+            assert_eq!(result["status"], "skipped", "{name}");
+            assert_eq!(result["statusDetails"]["muted"], true, "{name}");
+            assert_eq!(
+                result["statusDetails"]["message"],
+                "Skipped by Allure test plan"
+            );
+            assert!(result["steps"].as_array().unwrap().is_empty(), "{name}");
+        }
+    }
+    let raw = results.get("muted display name").unwrap();
+    let result: serde_json::Value = serde_json::from_str(raw).unwrap();
+    assert_eq!(result["fullName"], "allure::sync_unit");
+    assert_eq!(result["testCaseId"], md5_hex("allure::sync_unit"));
+    assert_eq!(
+        result["description"],
+        "Static metadata must survive muted finalization."
+    );
+    assert!(contains_label(raw, "ALLURE_ID", "42"));
+    assert!(contains_label(raw, "component", "sample-fixture"));
+    assert!(contains_label(raw, "framework", "cargo-test"));
+    assert_results_title_path(
+        &HashMap::from([("muted display name".into(), raw.clone())]),
+        &["tests", "allure.rs"],
+    );
+}
+
+#[allure_cargotest::allure_test]
+#[test]
+#[allure_cargotest::log_asserts]
+fn muted_plan_never_expands_selection_and_all_muted_invocations_succeed() {
+    let plan = serde_json::json!({
+        "tests": [{"id": 42}, {"selector": "manual_result"}, {"selector": "manual_async_result"}],
+        "excludedTests": muted_entries(),
+    });
+
+    let (results, project) = run_muted_sample(plan);
+
+    assert_eq!(results.len(), 3);
+    assert!(!project.path().join("control-executed").exists());
+    for name in ["muted display name", "manual_result", "manual_async_result"] {
+        let result: serde_json::Value = serde_json::from_str(results.get(name).unwrap()).unwrap();
+        assert_eq!(result["status"], "skipped");
+        assert_eq!(result["statusDetails"]["muted"], true);
+    }
 }
 
 fn run_sample_with_testplan(
@@ -1173,11 +1289,12 @@ fn prepare_sample_project(sample_name: &str) -> TempProjectDir {
         src_dir.join("lib.rs"),
     )
     .expect("shared sample lib should be copied");
-    fs::copy(
-        samples_root.join("tests").join(format!("{sample_name}.rs")),
-        tests_dir.join("allure.rs"),
-    )
-    .expect("sample test should be copied");
+    let sample_path = if sample_name == "tokio_async_muted" {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tokio_async_muted.rs")
+    } else {
+        samples_root.join("tests").join(format!("{sample_name}.rs"))
+    };
+    fs::copy(sample_path, tests_dir.join("allure.rs")).expect("sample test should be copied");
 
     let extra_dependencies = if sample_name.starts_with("tokio_async") {
         r#"tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }

@@ -68,6 +68,7 @@ pub fn status_details_for_message(message: String) -> StatusDetails {
         .with(|failure| failure.take())
         .filter(|details| details.message.as_deref() == Some(message.as_str()))
         .unwrap_or(StatusDetails {
+            muted: false,
             message: Some(message),
             trace: None,
             actual: None,
@@ -91,6 +92,7 @@ pub fn fail_assertion(
     expected: Option<String>,
 ) -> ! {
     let details = StatusDetails {
+        muted: false,
         message: Some(message.clone()),
         trace: None,
         actual,
@@ -1402,6 +1404,7 @@ impl AllureFacade {
             let timestamp = l.start_step_at(name, None);
             let status = status.unwrap_or(Status::Passed);
             let details = error.map(|error| StatusDetails {
+                muted: false,
                 message: Some(error.to_string()),
                 trace: None,
                 actual: None,
@@ -1527,6 +1530,7 @@ impl StepGuard {
         self.set_status(
             Status::Failed,
             Some(StatusDetails {
+                muted: false,
                 message: Some(message.into()),
                 trace: None,
                 actual: None,

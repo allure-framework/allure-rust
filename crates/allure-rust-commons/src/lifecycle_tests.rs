@@ -583,6 +583,7 @@ fn start_test_case_accepts_optional_test_result_fields() {
                 expected_result_html: Some("<p>Dashboard is displayed</p>".to_string()),
                 status: Some(Status::Skipped),
                 status_details: Some(StatusDetails {
+                    muted: false,
                     message: Some("preset".to_string()),
                     trace: None,
                     actual: None,
@@ -685,6 +686,7 @@ fn later_success_does_not_overwrite_an_observed_test_failure() {
             lifecycle.update_test_case(|test| {
                 test.status = Some(Status::Failed);
                 test.status_details = Some(StatusDetails {
+                    muted: false,
                     message: Some("assertion failed first".to_string()),
                     ..Default::default()
                 });
@@ -934,6 +936,7 @@ fn stop_step_preserves_existing_runtime_status_and_metadata_operations_target_cu
                     .expect("test state should exist");
                 test.step_stack[0].status = Some(Status::Broken);
                 test.step_stack[0].status_details = Some(StatusDetails {
+                    muted: false,
                     message: Some("runtime status".to_string()),
                     trace: None,
                     actual: None,
@@ -944,6 +947,7 @@ fn stop_step_preserves_existing_runtime_status_and_metadata_operations_target_cu
             lifecycle.stop_step(
                 Status::Passed,
                 Some(StatusDetails {
+                    muted: false,
                     message: Some("stop status".to_string()),
                     trace: None,
                     actual: None,
@@ -1071,6 +1075,7 @@ fn runtime_stage_inherits_enclosing_failure_status() {
             lifecycle.stop_test_case(
                 Status::Failed,
                 Some(StatusDetails {
+                    muted: false,
                     message: Some("expected created".to_string()),
                     trace: None,
                     actual: Some("pending".to_string()),
