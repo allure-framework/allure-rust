@@ -118,17 +118,17 @@ Set `ALLURE_TESTPLAN_PATH` to an Allure test-plan JSON file to run only matching
 ALLURE_TESTPLAN_PATH=./testplan.json cargo test
 ```
 
-A plan can select tests with `tests` and skip selected test bodies with `mutedTests`:
+A plan can select tests with `tests` and skip selected test bodies with `excludedTests`:
 
 ```json
 {
   "version": "1.0",
   "tests": [{ "selector": "api::login_works" }],
-  "mutedTests": [{ "id": 42, "selector": "api::login_works" }]
+  "excludedTests": [{ "id": 42, "selector": "api::login_works" }]
 }
 ```
 
-Omitted or empty `tests` leaves selection unrestricted. `mutedTests` never adds tests to the
+Omitted or empty `tests` leaves selection unrestricted. `excludedTests` never adds tests to the
 selection. A muted entry matches either its string or numeric ID, or its exact full-name
 selector. Selectors preserve spaces and JSON escapes; they are not patterns. Explicit IDs
 (`#[allure_test(id = "42")]` or manual reporter metadata) take precedence over IDs from

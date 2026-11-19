@@ -165,7 +165,7 @@ fn parse_test_plan(input: &str) -> Option<TestPlan> {
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned);
     let tests = parse_entries(object.get("tests"))?;
-    let muted_tests = parse_entries(object.get("mutedTests"))?;
+    let muted_tests = parse_entries(object.get("excludedTests"))?;
     if tests.is_empty() && muted_tests.is_empty() {
         return None;
     }

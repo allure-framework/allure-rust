@@ -337,8 +337,8 @@ fn explicit_adapter_id_takes_precedence_over_tag_fallback() {
 #[crate::log_asserts]
 fn muted_only_plans_leave_selection_unrestricted() {
     for input in [
-        r#"{"mutedTests":[{"id":42}]}"#,
-        r#"{"tests":[],"mutedTests":[{"id":"42"}]}"#,
+        r#"{"excludedTests":[{"id":42}]}"#,
+        r#"{"tests":[],"excludedTests":[{"id":"42"}]}"#,
     ] {
         let plan = parse_test_plan_input("muted only", input).expect("valid muted plan");
         assert!(plan.is_selected(None, None, None));
@@ -353,7 +353,7 @@ fn muted_only_plans_leave_selection_unrestricted() {
 fn muting_matches_either_identity_without_expanding_selection() {
     let plan = parse_test_plan_input(
         "independent selection and muting",
-        r#"{"tests":[{"id":42}],"mutedTests":[{}, {"id":"42","selector":"suite::case"}]}"#,
+        r#"{"tests":[{"id":42}],"excludedTests":[{}, {"id":"42","selector":"suite::case"}]}"#,
     )
     .expect("valid plan");
     assert!(plan.is_selected(None, Some("42"), None));
@@ -371,7 +371,7 @@ fn muting_matches_either_identity_without_expanding_selection() {
 fn selectors_preserve_spaces_and_json_escapes() {
     let plan = parse_test_plan_input(
         "literal selector",
-        r#"{"tests":[{"selector":"suite::a [\"b\"] {c}"}],"mutedTests":[{"selector":"suite::a [\"b\"] {c}"}]}"#,
+        r#"{"tests":[{"selector":"suite::a [\"b\"] {c}"}],"excludedTests":[{"selector":"suite::a [\"b\"] {c}"}]}"#,
     ).expect("valid plan");
     assert!(plan.is_selected(Some("suite::a [\"b\"] {c}"), None, None));
     assert!(plan.is_muted(Some("suite::a [\"b\"] {c}"), None, None));
@@ -383,12 +383,12 @@ fn selectors_preserve_spaces_and_json_escapes() {
 #[crate::log_asserts]
 fn malformed_collections_do_not_become_unrestricted_plans() {
     for input in [
-        r#"{"tests":null,"mutedTests":[{"id":42}]}"#,
-        r#"{"tests":{},"mutedTests":[{"id":42}]}"#,
-        r#"{"tests":[false],"mutedTests":[]}"#,
-        r#"{"tests":[],"mutedTests":{}}"#,
-        r#"{"mutedTests":[{"id":true}]}"#,
-        r#"{"mutedTests":[{"selector":42}]}"#,
+        r#"{"tests":null,"excludedTests":[{"id":42}]}"#,
+        r#"{"tests":{},"excludedTests":[{"id":42}]}"#,
+        r#"{"tests":[false],"excludedTests":[]}"#,
+        r#"{"tests":[],"excludedTests":{}}"#,
+        r#"{"excludedTests":[{"id":true}]}"#,
+        r#"{"excludedTests":[{"selector":42}]}"#,
     ] {
         assert!(parse_test_plan_input("malformed collection", input).is_none());
     }

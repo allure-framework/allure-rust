@@ -1037,7 +1037,7 @@ fn run_muted_sample(plan: serde_json::Value) -> (HashMap<String, String>, TempPr
 #[test]
 #[allure_cargotest::log_asserts]
 fn muted_only_plan_skips_all_execution_paths_and_retains_metadata() {
-    let plan = serde_json::json!({"version": "1.0", "mutedTests": muted_entries()});
+    let plan = serde_json::json!({"version": "1.0", "excludedTests": muted_entries()});
 
     let (results, project) = run_muted_sample(plan);
 
@@ -1082,7 +1082,7 @@ fn muted_only_plan_skips_all_execution_paths_and_retains_metadata() {
 fn muted_plan_never_expands_selection_and_all_muted_invocations_succeed() {
     let plan = serde_json::json!({
         "tests": [{"id": 42}, {"selector": "manual_result"}, {"selector": "manual_async_result"}],
-        "mutedTests": muted_entries(),
+        "excludedTests": muted_entries(),
     });
 
     let (results, project) = run_muted_sample(plan);
