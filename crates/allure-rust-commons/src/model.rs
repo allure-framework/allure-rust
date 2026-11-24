@@ -243,9 +243,6 @@ pub enum Stage {
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusDetails {
-    /// Whether the test was muted by the test plan.
-    #[serde(skip_serializing_if = "is_false")]
-    pub muted: bool,
     /// Human-readable status message.
     pub message: Option<String>,
     /// Stack trace or diagnostic trace.
@@ -275,10 +272,6 @@ pub struct Link {
     /// Optional link type such as `issue` or `tms`.
     #[serde(rename = "type")]
     pub link_type: Option<String>,
-}
-
-fn is_false(value: &bool) -> bool {
-    !value
 }
 
 /// Allure parameter.

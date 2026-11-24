@@ -981,7 +981,7 @@ fn keeps_metadata_linked_to_the_right_test_when_running_concurrently() {
     assert!(!second.contains("https://example.test/alpha"));
 }
 
-const MUTED_MACRO_CASES: &[&str] = &[
+const EXCLUDED_MACRO_CASES: &[&str] = &[
     "sync_unit",
     "async_unit",
     "sync_panic",
@@ -994,8 +994,8 @@ const MUTED_MACRO_CASES: &[&str] = &[
     "async_opaque",
 ];
 
-fn muted_entries() -> Vec<serde_json::Value> {
-    let mut entries: Vec<_> = MUTED_MACRO_CASES
+fn excluded_entries() -> Vec<serde_json::Value> {
+    let mut entries: Vec<_> = EXCLUDED_MACRO_CASES
         .iter()
         .map(|name| serde_json::json!({"selector": format!("allure::{name}")}))
         .collect();
@@ -1013,8 +1013,8 @@ fn muted_entries() -> Vec<serde_json::Value> {
     entries
 }
 
-fn run_muted_sample(plan: serde_json::Value) -> (HashMap<String, String>, TempProjectDir) {
-    let sample_name = "tokio_async_muted";
+fn run_excluded_sample(plan: serde_json::Value) -> (HashMap<String, String>, TempProjectDir) {
+    let sample_name = "tokio_async_excluded";
     let project = prepare_sample_project_step(sample_name);
     let results_dir = project.path().join("allure-results");
     let path = write_sample_testplan(sample_name, project.path(), &plan.to_string());
@@ -1024,7 +1024,7 @@ fn run_muted_sample(plan: serde_json::Value) -> (HashMap<String, String>, TempPr
 
     assert!(
         output.status.success(),
-        "muted invocations must succeed: {}\n{}",
+        "excluded invocations must succeed: {}\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -1036,10 +1036,10 @@ fn run_muted_sample(plan: serde_json::Value) -> (HashMap<String, String>, TempPr
 #[allure_cargotest::allure_test]
 #[test]
 #[allure_cargotest::log_asserts]
-fn muted_only_plan_skips_all_execution_paths_and_retains_metadata() {
-    let plan = serde_json::json!({"version": "1.0", "excludedTests": muted_entries()});
+fn excluded_only_plan_skips_all_execution_paths_and_retains_metadata() {
+    let plan = serde_json::json!({"version": "1.0", "excludedTests": excluded_entries()});
 
-    let (results, project) = run_muted_sample(plan);
+    let (results, project) = run_excluded_sample(plan);
 
     assert_eq!(results.len(), 17);
     assert!(project.path().join("control-executed").exists());
@@ -1048,10 +1048,8 @@ fn muted_only_plan_skips_all_execution_paths_and_retains_metadata() {
         let result: serde_json::Value = serde_json::from_str(raw).unwrap();
         if name == "control" {
             assert_eq!(result["status"], "passed");
-            assert!(result["statusDetails"].get("muted").is_none());
         } else {
             assert_eq!(result["status"], "skipped", "{name}");
-            assert_eq!(result["statusDetails"]["muted"], true, "{name}");
             assert_eq!(
                 result["statusDetails"]["message"],
                 "Skipped by Allure test plan"
@@ -1059,19 +1057,19 @@ fn muted_only_plan_skips_all_execution_paths_and_retains_metadata() {
             assert!(result["steps"].as_array().unwrap().is_empty(), "{name}");
         }
     }
-    let raw = results.get("muted display name").unwrap();
+    let raw = results.get("excluded display name").unwrap();
     let result: serde_json::Value = serde_json::from_str(raw).unwrap();
     assert_eq!(result["fullName"], "allure::sync_unit");
     assert_eq!(result["testCaseId"], md5_hex("allure::sync_unit"));
     assert_eq!(
         result["description"],
-        "Static metadata must survive muted finalization."
+        "Static metadata must survive excluded finalization."
     );
     assert!(contains_label(raw, "ALLURE_ID", "42"));
     assert!(contains_label(raw, "component", "sample-fixture"));
     assert!(contains_label(raw, "framework", "cargo-test"));
     assert_results_title_path(
-        &HashMap::from([("muted display name".into(), raw.clone())]),
+        &HashMap::from([("excluded display name".into(), raw.clone())]),
         &["tests", "allure.rs"],
     );
 }
@@ -1079,20 +1077,23 @@ fn muted_only_plan_skips_all_execution_paths_and_retains_metadata() {
 #[allure_cargotest::allure_test]
 #[test]
 #[allure_cargotest::log_asserts]
-fn muted_plan_never_expands_selection_and_all_muted_invocations_succeed() {
+fn excluded_plan_never_expands_selection_and_all_excluded_invocations_succeed() {
     let plan = serde_json::json!({
         "tests": [{"id": 42}, {"selector": "manual_result"}, {"selector": "manual_async_result"}],
-        "excludedTests": muted_entries(),
+        "excludedTests": excluded_entries(),
     });
 
-    let (results, project) = run_muted_sample(plan);
+    let (results, project) = run_excluded_sample(plan);
 
     assert_eq!(results.len(), 3);
     assert!(!project.path().join("control-executed").exists());
-    for name in ["muted display name", "manual_result", "manual_async_result"] {
+    for name in ["excluded display name", "manual_result", "manual_async_result"] {
         let result: serde_json::Value = serde_json::from_str(results.get(name).unwrap()).unwrap();
         assert_eq!(result["status"], "skipped");
-        assert_eq!(result["statusDetails"]["muted"], true);
+        assert_eq!(
+            result["statusDetails"]["message"],
+            "Skipped by Allure test plan"
+        );
     }
 }
 
@@ -1289,8 +1290,8 @@ fn prepare_sample_project(sample_name: &str) -> TempProjectDir {
         src_dir.join("lib.rs"),
     )
     .expect("shared sample lib should be copied");
-    let sample_path = if sample_name == "tokio_async_muted" {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tokio_async_muted.rs")
+    let sample_path = if sample_name == "tokio_async_excluded" {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tokio_async_excluded.rs")
     } else {
         samples_root.join("tests").join(format!("{sample_name}.rs"))
     };

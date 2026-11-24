@@ -332,8 +332,8 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
-  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
-    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+  if ::allure_cargotest::__private::is_excluded(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_excluded_test(__allure_options);
     {skipped_return}
   }}
   return ::allure_cargotest::__private::test_with_outcome_async(__allure_options, async move {{
@@ -371,8 +371,8 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
-  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
-    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+  if ::allure_cargotest::__private::is_excluded(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_excluded_test(__allure_options);
     {skipped_return}
   }}
   return ::allure_cargotest::__private::test_with_outcome(__allure_options, || -> () {{
@@ -417,8 +417,8 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
-  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
-    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+  if ::allure_cargotest::__private::is_excluded(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_excluded_test(__allure_options);
     {skipped_return}
   }}
   let __allure_runtime_test = ::allure_cargotest::__private::start_runtime_test_with_options(__allure_options);
@@ -447,8 +447,8 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
-  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
-    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+  if ::allure_cargotest::__private::is_excluded(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_excluded_test(__allure_options);
     {skipped_return}
   }}
   return ::allure_cargotest::__private::test_with_outcome_async(__allure_options, async move {{
@@ -482,8 +482,8 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
-  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
-    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+  if ::allure_cargotest::__private::is_excluded(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_excluded_test(__allure_options);
     {skipped_return}
   }}
   let __allure_runtime_test = ::allure_cargotest::__private::start_runtime_test_with_options(__allure_options);
@@ -507,8 +507,8 @@ fn transform_fn(attrs: AttrArgs, input: TokenStream) -> TokenStream {
     .with_panic_status(::allure_cargotest::Status::Failed)
     {doc_description_option}
     {allure_id_option};
-  if ::allure_cargotest::__private::is_muted(Some(&__allure_full_name), {allure_id_expr}, None) {{
-    ::allure_cargotest::__private::skip_muted_test(__allure_options);
+  if ::allure_cargotest::__private::is_excluded(Some(&__allure_full_name), {allure_id_expr}, None) {{
+    ::allure_cargotest::__private::skip_excluded_test(__allure_options);
     {skipped_return}
   }}
   return ::allure_cargotest::__private::test_with_outcome(__allure_options, || -> {test_return_type} {{

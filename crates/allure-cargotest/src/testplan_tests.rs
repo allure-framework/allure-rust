@@ -335,34 +335,34 @@ fn explicit_adapter_id_takes_precedence_over_tag_fallback() {
 #[crate::allure_test]
 #[test]
 #[crate::log_asserts]
-fn muted_only_plans_leave_selection_unrestricted() {
+fn excluded_only_plans_leave_selection_unrestricted() {
     for input in [
         r#"{"excludedTests":[{"id":42}]}"#,
         r#"{"tests":[],"excludedTests":[{"id":"42"}]}"#,
     ] {
-        let plan = parse_test_plan_input("muted only", input).expect("valid muted plan");
+        let plan = parse_test_plan_input("excluded only", input).expect("valid excluded plan");
         assert!(plan.is_selected(None, None, None));
-        assert!(plan.is_muted(None, Some("42"), None));
-        assert!(!plan.is_muted(None, None, None));
+        assert!(plan.is_excluded(None, Some("42"), None));
+        assert!(!plan.is_excluded(None, None, None));
     }
 }
 
 #[crate::allure_test]
 #[test]
 #[crate::log_asserts]
-fn muting_matches_either_identity_without_expanding_selection() {
+fn exclusion_matches_either_identity_without_expanding_selection() {
     let plan = parse_test_plan_input(
-        "independent selection and muting",
+        "independent selection and exclusion",
         r#"{"tests":[{"id":42}],"excludedTests":[{}, {"id":"42","selector":"suite::case"}]}"#,
     )
     .expect("valid plan");
     assert!(plan.is_selected(None, Some("42"), None));
     assert!(!plan.is_selected(Some("suite::case"), Some("other"), None));
-    assert!(plan.is_muted(Some("suite::case"), Some("other"), None));
-    assert!(plan.is_muted(None, None, Some(&["@allure.id=42"])));
-    assert!(plan.is_muted(None, None, Some(&["@allure.id:42"])));
-    assert!(!plan.is_muted(None, Some("other"), Some(&["@allure.id=42"])));
-    assert!(!plan.is_muted(None, None, None));
+    assert!(plan.is_excluded(Some("suite::case"), Some("other"), None));
+    assert!(plan.is_excluded(None, None, Some(&["@allure.id=42"])));
+    assert!(plan.is_excluded(None, None, Some(&["@allure.id:42"])));
+    assert!(!plan.is_excluded(None, Some("other"), Some(&["@allure.id=42"])));
+    assert!(!plan.is_excluded(None, None, None));
 }
 
 #[crate::allure_test]
@@ -374,8 +374,8 @@ fn selectors_preserve_spaces_and_json_escapes() {
         r#"{"tests":[{"selector":"suite::a [\"b\"] {c}"}],"excludedTests":[{"selector":"suite::a [\"b\"] {c}"}]}"#,
     ).expect("valid plan");
     assert!(plan.is_selected(Some("suite::a [\"b\"] {c}"), None, None));
-    assert!(plan.is_muted(Some("suite::a [\"b\"] {c}"), None, None));
-    assert!(!plan.is_muted(Some("suite::a[\"b\"]{c}"), None, None));
+    assert!(plan.is_excluded(Some("suite::a [\"b\"] {c}"), None, None));
+    assert!(!plan.is_excluded(Some("suite::a[\"b\"]{c}"), None, None));
 }
 
 #[crate::allure_test]

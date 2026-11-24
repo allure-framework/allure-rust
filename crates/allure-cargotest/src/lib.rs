@@ -94,21 +94,21 @@ pub mod __private {
         }
     }
 
-    pub fn is_muted(
+    pub fn is_excluded(
         full_name: Option<&str>,
         allure_id: Option<&str>,
         tags: Option<&[&str]>,
     ) -> bool {
         super::testplan::active_test_plan()
-            .is_some_and(|plan| plan.is_muted(full_name, allure_id, tags))
+            .is_some_and(|plan| plan.is_excluded(full_name, allure_id, tags))
     }
 
-    pub fn skip_muted_test(options: TestOptions) {
+    pub fn skip_excluded_test(options: TestOptions) {
         let runtime_test = start_runtime_test_with_options(options);
         finish_runtime_test_status(
             runtime_test,
             super::Status::Skipped,
-            Some(super::muted_status_details()),
+            Some(super::excluded_status_details()),
         );
     }
 
@@ -291,7 +291,7 @@ impl CargoTestReporter {
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
         apply_synthetic_suite_labels(&self.allure, full_name);
-        if self.skip_if_muted(full_name, allure_id, tags) {
+        if self.skip_if_excluded(full_name, allure_id, tags) {
             return;
         }
         let _current_allure = __private::push_current_allure(&self.allure);
@@ -339,7 +339,7 @@ impl CargoTestReporter {
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
         apply_synthetic_suite_labels(&self.allure, full_name);
-        if self.skip_if_muted(full_name, allure_id, tags) {
+        if self.skip_if_excluded(full_name, allure_id, tags) {
             return;
         }
         let result = __private::run_with_current_allure(self.allure.clone(), future).await;
@@ -370,7 +370,7 @@ impl CargoTestReporter {
         }
     }
 
-    fn skip_if_muted(
+    fn skip_if_excluded(
         &self,
         full_name: Option<&str>,
         allure_id: Option<&str>,
@@ -379,10 +379,10 @@ impl CargoTestReporter {
         if self
             .test_plan
             .as_ref()
-            .is_some_and(|plan| plan.is_muted(full_name, allure_id, tags))
+            .is_some_and(|plan| plan.is_excluded(full_name, allure_id, tags))
         {
             self.allure
-                .end_test(Status::Skipped, Some(muted_status_details()));
+                .end_test(Status::Skipped, Some(excluded_status_details()));
             true
         } else {
             false
@@ -401,7 +401,7 @@ impl CargoTestReporter {
         __private::clear_last_assertion_failure();
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
-        if self.skip_if_muted(Some(name), None, None) {
+        if self.skip_if_excluded(Some(name), None, None) {
             return;
         }
         let _current_allure = __private::push_current_allure(&self.allure);
@@ -424,7 +424,7 @@ impl CargoTestReporter {
         __private::clear_last_assertion_failure();
         apply_common_runtime_labels(&self.allure);
         self.allure.label("framework", "cargo-test");
-        if self.skip_if_muted(Some(name), None, None) {
+        if self.skip_if_excluded(Some(name), None, None) {
             return;
         }
         let result = __private::run_with_current_allure(self.allure.clone(), future).await;
@@ -447,9 +447,8 @@ impl CargoTestReporter {
     }
 }
 
-fn muted_status_details() -> StatusDetails {
+fn excluded_status_details() -> StatusDetails {
     StatusDetails {
-        muted: true,
         message: Some("Skipped by Allure test plan".to_string()),
         ..StatusDetails::default()
     }

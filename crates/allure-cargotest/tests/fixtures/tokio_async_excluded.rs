@@ -2,8 +2,8 @@ use allure_cargotest::{allure_test, CargoTestReporter};
 use std::process::{ExitCode, Termination};
 
 fn forbidden() -> ! {
-    std::fs::write("body-executed", "muted body ran").expect("write sentinel");
-    panic!("muted body must not execute")
+    std::fs::write("body-executed", "excluded body ran").expect("write sentinel");
+    panic!("excluded body must not execute")
 }
 
 struct FailingTermination;
@@ -14,8 +14,8 @@ impl Termination for FailingTermination {
     }
 }
 
-/// Static metadata must survive muted finalization.
-#[allure_test(name = "muted display name", id = "42")]
+/// Static metadata must survive excluded finalization.
+#[allure_test(name = "excluded display name", id = "42")]
 #[test]
 fn sync_unit() {
     forbidden();

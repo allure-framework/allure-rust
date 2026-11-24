@@ -12,7 +12,7 @@ pub struct TestPlan {
     /// Entries included in the plan.
     pub tests: Vec<TestPlanEntry>,
     /// Entries whose selected test bodies must not execute.
-    pub muted_tests: Vec<TestPlanEntry>,
+    pub excluded_tests: Vec<TestPlanEntry>,
 }
 
 /// Minimal test entry shape used for matching test execution.
@@ -66,17 +66,17 @@ impl TestPlan {
                     .is_some_and(|(selector, identity)| selector == identity)
             })
     }
-    /// Returns whether either the effective ID or exact selector matches a muted entry.
+    /// Returns whether either the effective ID or exact selector matches an exclusion entry.
     ///
-    /// Explicit IDs override tag-derived IDs. Muting does not affect selection.
-    pub fn is_muted(
+    /// Explicit IDs override tag-derived IDs. Exclusion does not affect selection.
+    pub fn is_excluded(
         &self,
         full_name: Option<&str>,
         allure_id: Option<&str>,
         tags: Option<&[&str]>,
     ) -> bool {
         let effective_id = effective_allure_id(allure_id, tags);
-        self.muted_tests.iter().any(|entry| {
+        self.excluded_tests.iter().any(|entry| {
             entry
                 .id
                 .as_deref()
@@ -165,14 +165,14 @@ fn parse_test_plan(input: &str) -> Option<TestPlan> {
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned);
     let tests = parse_entries(object.get("tests"))?;
-    let muted_tests = parse_entries(object.get("excludedTests"))?;
-    if tests.is_empty() && muted_tests.is_empty() {
+    let excluded_tests = parse_entries(object.get("excludedTests"))?;
+    if tests.is_empty() && excluded_tests.is_empty() {
         return None;
     }
     Some(TestPlan {
         version,
         tests,
-        muted_tests,
+        excluded_tests,
     })
 }
 
