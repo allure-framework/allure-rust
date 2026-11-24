@@ -1087,7 +1087,11 @@ fn excluded_plan_never_expands_selection_and_all_excluded_invocations_succeed() 
 
     assert_eq!(results.len(), 3);
     assert!(!project.path().join("control-executed").exists());
-    for name in ["excluded display name", "manual_result", "manual_async_result"] {
+    for name in [
+        "excluded display name",
+        "manual_result",
+        "manual_async_result",
+    ] {
         let result: serde_json::Value = serde_json::from_str(results.get(name).unwrap()).unwrap();
         assert_eq!(result["status"], "skipped");
         assert_eq!(
